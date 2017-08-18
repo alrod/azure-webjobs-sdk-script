@@ -13,7 +13,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Web.Hosting;
 using System.Web.Http;
-using System.Web.Http.Controllers;
 using System.Web.Http.Routing;
 using Microsoft.AspNet.WebHooks;
 using Microsoft.Azure.WebJobs.Extensions.Http;
@@ -26,8 +25,11 @@ using Microsoft.Azure.WebJobs.Script.Config;
 using Microsoft.Azure.WebJobs.Script.Description;
 using Microsoft.Azure.WebJobs.Script.Diagnostics;
 using Microsoft.Azure.WebJobs.Script.Eventing;
+using Microsoft.Azure.WebJobs.Script.Scaling;
 using Microsoft.Azure.WebJobs.Script.WebHost.Diagnostics;
+using Microsoft.Azure.WebJobs.Script.WebHost.Filters;
 using Microsoft.Azure.WebJobs.Script.WebHost.Handlers;
+using Microsoft.Azure.WebJobs.Script.WebHost.Scale;
 using Microsoft.Extensions.Logging;
 
 namespace Microsoft.Azure.WebJobs.Script.WebHost
@@ -207,6 +209,12 @@ namespace Microsoft.Azure.WebJobs.Script.WebHost
 
         public void Initialize()
         {
+            if (AppServiceScaleManager.Enabled)
+            {
+                var statusProvider = new WorkerStatusProvider(_performanceManager, _config.TraceWriter);
+                AppServiceScaleManager.RegisterProvider(statusProvider);
+            }
+
             lock (_syncLock)
             {
                 if (InStandbyMode)
@@ -437,6 +445,10 @@ namespace Microsoft.Azure.WebJobs.Script.WebHost
             hostConfig.AddService<IWebHookProvider>(this._bindingWebHookProvider);
             hostConfig.AddService<IWebJobsExceptionHandler>(_exceptionHandler);
 
+            var hostHealthInvocationFilter = new HostHealthInvocationFilter(RestartHost, PerformanceManager);
+            var extensions = _config.HostConfig.GetService<IExtensionRegistry>();
+            extensions.RegisterExtension<IFunctionInvocationFilter>(hostHealthInvocationFilter);
+
             // disable standard Dashboard logging (enabling Table logging below)
             hostConfig.DashboardConnectionString = null;
 
@@ -453,6 +465,14 @@ namespace Microsoft.Azure.WebJobs.Script.WebHost
             InitializeHttp();
 
             base.OnHostCreated();
+        }
+
+        protected override void OnHostStarting()
+        {
+            if (PerformanceManager.IsUnderHighLoad())
+            {
+                throw new InvalidOperationException("Host is under high load and is unable to start.");
+            }
         }
 
         protected override void OnHostStarted()
