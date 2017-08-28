@@ -22,13 +22,13 @@ namespace Microsoft.Azure.WebJobs.Script.Host
     {
         private readonly WebScriptHostManager _scriptHostManager;
         private readonly IDependencyResolver _dependencyResolver;
-        private WebHookReceiverManager _webHookReceiverManager;
+        private FunctionsController _functionsController;
 
-        internal ProxyFunctionExecutor(WebScriptHostManager scriptHostManager, WebHookReceiverManager webHookReceiverManager, IDependencyResolver dependencyResolver)
+        internal ProxyFunctionExecutor(WebScriptHostManager scriptHostManager, IDependencyResolver dependencyResolver, FunctionsController functionsController)
         {
             _scriptHostManager = scriptHostManager;
-            _webHookReceiverManager = webHookReceiverManager;
             _dependencyResolver = dependencyResolver;
+            _functionsController = functionsController;
         }
 
         public async Task ExecuteFuncAsync(string funcName, Dictionary<string, object> arguments, CancellationToken cancellationToken)
@@ -56,57 +56,12 @@ namespace Microsoft.Azure.WebJobs.Script.Host
 
             Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> processRequestHandler = async (req, ct) =>
             {
-                return await ProcessRequestAsync(req, function, ct);
+                return await _functionsController.ProcessRequestAsync(req, function, ct);
             };
 
             var resp = await _scriptHostManager.HttpRequestManager.ProcessRequestAsync(request, processRequestHandler, cancellationToken);
             request.Properties["MS_AzureFunctionsHttpResponse"] = resp;
             return;
-        }
-
-        private async Task<HttpResponseMessage> ProcessRequestAsync(HttpRequestMessage request, FunctionDescriptor function, CancellationToken cancellationToken)
-        {
-            var httpTrigger = function.GetTriggerAttributeOrNull<HttpTriggerAttribute>();
-            bool isWebHook = !string.IsNullOrEmpty(httpTrigger.WebHookType);
-            var authorizationLevel = request.GetAuthorizationLevel();
-            HttpResponseMessage response = null;
-
-            if (isWebHook)
-            {
-                if (request.HasAuthorizationLevel(AuthorizationLevel.Admin))
-                {
-                    // Admin level requests bypass the WebHook auth pipeline
-                    response = await _scriptHostManager.HandleRequestAsync(function, request, cancellationToken);
-                }
-                else
-                {
-                    // This is a WebHook request so define a delegate for the user function.
-                    // The WebHook Receiver pipeline will first validate the request fully
-                    // then invoke this callback.
-                    Func<HttpRequestMessage, Task<HttpResponseMessage>> invokeFunction = async (req) =>
-                    {
-                        // Reset the content stream before passing the request down to the function
-                        Stream stream = await req.Content.ReadAsStreamAsync();
-                        stream.Seek(0, SeekOrigin.Begin);
-
-                        return await _scriptHostManager.HandleRequestAsync(function, req, cancellationToken);
-                    };
-                    response = await _webHookReceiverManager.HandleRequestAsync(function, request, invokeFunction);
-                }
-            }
-            else
-            {
-                // Authorize
-                if (!request.HasAuthorizationLevel(httpTrigger.AuthLevel))
-                {
-                    return new HttpResponseMessage(HttpStatusCode.Unauthorized);
-                }
-
-                // Not a WebHook request so dispatch directly
-                response = await _scriptHostManager.HandleRequestAsync(function, request, cancellationToken);
-            }
-
-            return response;
         }
     }
 }

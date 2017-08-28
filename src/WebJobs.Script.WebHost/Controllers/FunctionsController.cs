@@ -59,7 +59,7 @@ namespace Microsoft.Azure.WebJobs.Script.WebHost.Controllers
                 return await ProcessRequestAsync(req, function, ct);
             };
 
-            IFuncExecutor proxyFunctionExecutor = new ProxyFunctionExecutor(this._scriptHostManager, this._webHookReceiverManager, controllerContext.Configuration.DependencyResolver);
+            IFuncExecutor proxyFunctionExecutor = new ProxyFunctionExecutor(this._scriptHostManager, controllerContext.Configuration.DependencyResolver, this);
             request.Properties.Add("AzureFuncExecutor", proxyFunctionExecutor);
             return await _scriptHostManager.HttpRequestManager.ProcessRequestAsync(request, processRequestHandler, cancellationToken);
         }
@@ -75,7 +75,7 @@ namespace Microsoft.Azure.WebJobs.Script.WebHost.Controllers
             return authorizationLevel;
         }
 
-        private async Task<HttpResponseMessage> ProcessRequestAsync(HttpRequestMessage request, FunctionDescriptor function, CancellationToken cancellationToken)
+        internal async Task<HttpResponseMessage> ProcessRequestAsync(HttpRequestMessage request, FunctionDescriptor function, CancellationToken cancellationToken)
         {
             var httpTrigger = function.GetTriggerAttributeOrNull<HttpTriggerAttribute>();
             bool isWebHook = !string.IsNullOrEmpty(httpTrigger.WebHookType);
