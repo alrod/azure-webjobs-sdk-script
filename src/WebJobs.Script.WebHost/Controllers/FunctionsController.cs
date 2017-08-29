@@ -60,7 +60,7 @@ namespace Microsoft.Azure.WebJobs.Script.WebHost.Controllers
             };
 
             IFuncExecutor proxyFunctionExecutor = new ProxyFunctionExecutor(this._scriptHostManager, controllerContext.Configuration.DependencyResolver, this);
-            request.Properties.Add("AzureFuncExecutor", proxyFunctionExecutor);
+            request.Properties.Add(ScriptConstants.AzureProxyFunctionExecutorKey, proxyFunctionExecutor);
             return await _scriptHostManager.HttpRequestManager.ProcessRequestAsync(request, processRequestHandler, cancellationToken);
         }
 

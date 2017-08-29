@@ -63,7 +63,6 @@ namespace Microsoft.Azure.WebJobs.Script
         private FileWatcherEventSource _fileEventSource;
         private IDisposable _fileEventsSubscription;
         private ProxyClientExecutor _proxyClient;
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Performance", "CA1823:AvoidUnusedPrivateFields")]
 
         // Specify the "builtin binding types". These are types that are directly accesible without needing an explicit load gesture.
         // This is the set of bindings we shipped prior to binding extensibility.

@@ -33,12 +33,12 @@ namespace Microsoft.Azure.WebJobs.Script.Host
 
         public async Task ExecuteFuncAsync(string funcName, Dictionary<string, object> arguments, CancellationToken cancellationToken)
         {
-            HttpRequestMessage request = arguments["MS_AzureFunctionsHttpRequest"] as HttpRequestMessage;
+            HttpRequestMessage request = arguments[ScriptConstants.AzureFunctionsHttpRequestKey] as HttpRequestMessage;
             var function = _scriptHostManager.GetHttpFunctionOrNull(request);
             if (function == null)
             {
                 // request does not map to an HTTP function
-                request.Properties["MS_AzureFunctionsHttpResponse"] = new HttpResponseMessage(HttpStatusCode.NotFound);
+                request.Properties[ScriptConstants.AzureFunctionsHttpResponseKey] = new HttpResponseMessage(HttpStatusCode.NotFound);
                 return;
             }
             request.SetProperty(ScriptConstants.AzureFunctionsHttpFunctionKey, function);
@@ -50,7 +50,7 @@ namespace Microsoft.Azure.WebJobs.Script.Host
                 // disabled functions are not publicly addressable w/o Admin level auth,
                 // and excluded functions are also ignored here (though the check above will
                 // already exclude them)
-                request.Properties["MS_AzureFunctionsHttpResponse"] = new HttpResponseMessage(HttpStatusCode.NotFound);
+                request.Properties[ScriptConstants.AzureFunctionsHttpResponseKey] = new HttpResponseMessage(HttpStatusCode.NotFound);
                 return;
             }
 
@@ -60,7 +60,7 @@ namespace Microsoft.Azure.WebJobs.Script.Host
             };
 
             var resp = await _scriptHostManager.HttpRequestManager.ProcessRequestAsync(request, processRequestHandler, cancellationToken);
-            request.Properties["MS_AzureFunctionsHttpResponse"] = resp;
+            request.Properties[ScriptConstants.AzureFunctionsHttpResponseKey] = resp;
             return;
         }
     }
