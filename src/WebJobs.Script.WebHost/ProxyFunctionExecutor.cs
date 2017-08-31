@@ -22,13 +22,13 @@ namespace Microsoft.Azure.WebJobs.Script.Host
     {
         private readonly WebScriptHostManager _scriptHostManager;
         private readonly IDependencyResolver _dependencyResolver;
-        private FunctionsController _functionsController;
+        private WebHookReceiverManager _webHookReceiverManager;
 
-        internal ProxyFunctionExecutor(WebScriptHostManager scriptHostManager, IDependencyResolver dependencyResolver, FunctionsController functionsController)
+        internal ProxyFunctionExecutor(WebScriptHostManager scriptHostManager, IDependencyResolver dependencyResolver, WebHookReceiverManager webHookReceiverManager)
         {
             _scriptHostManager = scriptHostManager;
+            _webHookReceiverManager = webHookReceiverManager;
             _dependencyResolver = dependencyResolver;
-            _functionsController = functionsController;
         }
 
         public async Task ExecuteFuncAsync(string funcName, Dictionary<string, object> arguments, CancellationToken cancellationToken)
@@ -43,7 +43,7 @@ namespace Microsoft.Azure.WebJobs.Script.Host
             }
             request.SetProperty(ScriptConstants.AzureFunctionsHttpFunctionKey, function);
 
-            var authorizationLevel = await FunctionsController.DetermineAuthorizationLevelAsync(request, function, _dependencyResolver);
+            var authorizationLevel = await FunctionRequestInvoker.DetermineAuthorizationLevelAsync(request, function, _dependencyResolver);
             if (function.Metadata.IsExcluded ||
                (function.Metadata.IsDisabled && !(request.IsAuthDisabled() || authorizationLevel == AuthorizationLevel.Admin)))
             {
@@ -56,7 +56,7 @@ namespace Microsoft.Azure.WebJobs.Script.Host
 
             Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> processRequestHandler = async (req, ct) =>
             {
-                return await _functionsController.ProcessRequestAsync(req, function, ct);
+                return await FunctionRequestInvoker.ProcessRequestAsync(req, function, ct, _scriptHostManager, _webHookReceiverManager);
             };
 
             var resp = await _scriptHostManager.HttpRequestManager.ProcessRequestAsync(request, processRequestHandler, cancellationToken);
