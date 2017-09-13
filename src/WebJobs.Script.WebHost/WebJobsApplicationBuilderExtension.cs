@@ -23,10 +23,12 @@ namespace WebJobs.Script.WebHost.Core
 
             builder.UseHttpBindingRouting(applicationLifetime, routes);
 
-            builder.UseWhen(context => !context.Request.Path.StartsWithSegments("/admin/host/status"), config =>
+            builder.UseWhen(context => !context.Request.Path.StartsWithSegments("/admin"), config =>
             {
                 config.UseMiddleware<ScriptHostCheckMiddleware>();
             });
+
+            builder.UseWhen(VirtualFileSystemMiddleware.IsVirtualFileSystemRequest, config => config.UseMiddleware<VirtualFileSystemMiddleware>());
 
             builder.UseMvc(r =>
             {

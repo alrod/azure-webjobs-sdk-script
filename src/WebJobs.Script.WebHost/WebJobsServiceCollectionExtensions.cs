@@ -4,7 +4,6 @@
 using System;
 using Autofac;
 using Autofac.Extensions.DependencyInjection;
-using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.Azure.WebJobs.Script;
@@ -13,12 +12,15 @@ using Microsoft.Azure.WebJobs.Script.Config;
 using Microsoft.Azure.WebJobs.Script.Eventing;
 using Microsoft.Azure.WebJobs.Script.WebHost;
 using Microsoft.Azure.WebJobs.Script.WebHost.Core;
+using Microsoft.Azure.WebJobs.Script.WebHost.Management;
+using Microsoft.Azure.WebJobs.Script.WebHost.Middleware;
 using Microsoft.Azure.WebJobs.Script.WebHost.Security.Authorization;
 using Microsoft.Azure.WebJobs.Script.WebHost.Security.Authorization.Policies;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
+using WebJobs.Script.WebHost.Management;
 
 namespace WebJobs.Script.WebHost.Core
 {
@@ -43,7 +45,6 @@ namespace WebJobs.Script.WebHost.Core
 
         public static IServiceCollection AddWebJobsScriptHostAuthorization(this IServiceCollection services)
         {
-
             services.AddAuthorization(o =>
             {
                 o.AddScriptPolicies();
@@ -87,6 +88,10 @@ namespace WebJobs.Script.WebHost.Core
             // The services below need to be scoped to a pseudo-tenant (warm/specialized environment)
             builder.Register<WebScriptHostManager>(c => c.Resolve<WebHostResolver>().GetWebScriptHostManager()).ExternallyOwned();
             builder.Register<ISecretManager>(c => c.Resolve<WebHostResolver>().GetSecretManager()).ExternallyOwned();
+            builder.RegisterType<WebFunctionsManager>().As<IWebFunctionsManager>().SingleInstance();
+            builder.RegisterType<VirtualFileSystem>();
+            builder.RegisterType<ZipFileSystem>();
+            builder.RegisterType<VirtualFileSystemMiddleware>();
 
             // Populate the container builder with registered services.
             // Doing this here will cause any services registered in the service collection to

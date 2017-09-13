@@ -74,7 +74,7 @@ namespace Microsoft.Azure.WebJobs.Extensions.Http
 
             if (!authorized)
             {
-                return new UnauthorizedResult();
+                //return new UnauthorizedResult();
             }
 
             Dictionary<string, object> arguments = GetFunctionArguments(descriptor, context.Request);

@@ -130,7 +130,7 @@ namespace Microsoft.Azure.WebJobs.Script.WebHost
                 {
                     _activeScriptHostConfig = CreateScriptHostConfiguration(settings);
 
-                    _activeHostManager = new WebScriptHostManager(_activeScriptHostConfig, _secretManagerFactory, _eventManager,  _settingsManager, settings, _router, _loggerFactoryBuilder);
+                    _activeHostManager = new WebScriptHostManager(_activeScriptHostConfig, _secretManagerFactory, _eventManager, _settingsManager, settings, _router, _loggerFactoryBuilder);
 
                     // _activeReceiverManager = new WebHookReceiverManager(_activeHostManager.SecretManager);
 
@@ -160,14 +160,17 @@ namespace Microsoft.Azure.WebJobs.Script.WebHost
 
         internal static ScriptHostConfiguration CreateScriptHostConfiguration(WebHostSettings settings, bool inStandbyMode = false)
         {
-            var scriptHostConfig = new ScriptHostConfiguration
+            InitializeFileSystem(settings);
+
+            var scriptHostConfig = new ScriptHostConfiguration()
             {
                 RootScriptPath = settings.ScriptPath,
                 RootLogPath = settings.LogPath,
                 FileLoggingMode = FileLoggingMode.DebugOnly,
                 TraceWriter = settings.TraceWriter,
                 IsSelfHost = settings.IsSelfHost,
-                LoggerFactoryBuilder = settings.LoggerFactoryBuilder
+                LoggerFactoryBuilder = settings.LoggerFactoryBuilder,
+                TestDataPath = settings.TestDataPath
             };
 
             if (inStandbyMode)
@@ -183,23 +186,25 @@ namespace Microsoft.Azure.WebJobs.Script.WebHost
             return scriptHostConfig;
         }
 
-        private static void InitializeFileSystem()
+        private static void InitializeFileSystem(WebHostSettings settings)
         {
             if (ScriptSettingsManager.Instance.IsAzureEnvironment)
             {
+                // When running on Azure, we kick this off on the background
+                // Q: why?
                 Task.Run(() =>
                 {
                     string home = ScriptSettingsManager.Instance.GetSetting(EnvironmentSettingNames.AzureWebsiteHomePath);
                     if (!string.IsNullOrEmpty(home))
                     {
                         // Delete hostingstart.html if any. Azure creates that in all sites by default
-                        string siteRootPath = Path.Combine(home, @"site\wwwroot");
-                        string hostingStart = Path.Combine(siteRootPath, "hostingstart.html");
+                        string hostingStart = Path.Combine(settings.ScriptPath, "hostingstart.html");
                         if (File.Exists(hostingStart))
                         {
                             File.Delete(hostingStart);
                         }
 
+                        Directory.CreateDirectory(settings.TestDataPath);
                         // Create the tools folder if it doesn't exist
                         string toolsPath = Path.Combine(home, @"site\tools");
                         Directory.CreateDirectory(toolsPath);
@@ -219,6 +224,12 @@ namespace Microsoft.Azure.WebJobs.Script.WebHost
                         }
                     }
                 });
+            }
+            else
+            {
+                // Ensure we have our scripts directory in non-Azure scenarios
+                Directory.CreateDirectory(settings.ScriptPath);
+                Directory.CreateDirectory(settings.TestDataPath);
             }
         }
 

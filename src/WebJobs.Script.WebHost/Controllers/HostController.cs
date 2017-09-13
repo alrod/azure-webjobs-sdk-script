@@ -29,77 +29,23 @@ namespace Microsoft.Azure.WebJobs.Script.WebHost.Controllers
     /// Controller responsible for handling all administrative requests, for
     /// example enqueueing function invocations, etc.
     /// </summary>
-    public class AdminController : Controller
+    public class HostController : Controller
     {
         private readonly WebScriptHostManager _scriptHostManager;
         private readonly WebHostSettings _webHostSettings;
         private readonly ILogger _logger;
         private readonly IAuthorizationService _authorizationService;
 
-        public AdminController(WebScriptHostManager scriptHostManager, WebHostSettings webHostSettings, ILoggerFactory loggerFactory, IAuthorizationService authorizationService)
+        public HostController(WebScriptHostManager scriptHostManager, WebHostSettings webHostSettings, ILoggerFactory loggerFactory, IAuthorizationService authorizationService)
         {
             _scriptHostManager = scriptHostManager;
             _webHostSettings = webHostSettings;
-            _logger = loggerFactory?.CreateLogger(ScriptConstants.LogCategoryAdminController);
+            _logger = loggerFactory?.CreateLogger(ScriptConstants.LogCategoryHostController);
             _authorizationService = authorizationService;
         }
 
-        [HttpPost]
-        [Route("admin/functions/{name}")]
-        [Authorize(Policy = PolicyNames.AdminAuthLevel)]
-        public IActionResult Invoke(string name, [FromBody] FunctionInvocation invocation)
-        {
-            if (invocation == null)
-            {
-                return BadRequest();
-            }
-
-            FunctionDescriptor function = _scriptHostManager.Instance.GetFunctionOrNull(name);
-            if (function == null)
-            {
-                return BadRequest();
-            }
-
-            ParameterDescriptor inputParameter = function.Parameters.First(p => p.IsTrigger);
-            Dictionary<string, object> arguments = new Dictionary<string, object>()
-            {
-                { inputParameter.Name, invocation.Input }
-            };
-            Task.Run(() => _scriptHostManager.Instance.CallAsync(function.Name, arguments));
-
-            return Accepted();
-        }
-
-        [HttpGet]
-        [Route("admin/functions/{name}/status")]
-        [Authorize(Policy = PolicyNames.AdminAuthLevel)]
-        public IActionResult GetFunctionStatus(string name)
-        {
-            FunctionStatus status = new FunctionStatus();
-            Collection<string> functionErrors = null;
-
-            // first see if the function has any errors
-            if (_scriptHostManager.Instance.FunctionErrors.TryGetValue(name, out functionErrors))
-            {
-                status.Errors = functionErrors;
-            }
-            else
-            {
-                // if we don't have any errors registered, make sure the function exists
-                // before returning empty errors
-                FunctionDescriptor function = _scriptHostManager.Instance.Functions.FirstOrDefault(p => p.Name.ToLowerInvariant() == name.ToLowerInvariant());
-                if (function == null)
-                {
-                    return NotFound();
-                }
-            }
-
-            return Ok(status);
-        }
-
-        [HttpGet]
-        [Route("admin/host/status")]
-        [Authorize(Policy = PolicyNames.AdminAuthLevelOrInternal)]
+        [HttpGet("admin/host/status")]
+        //[Authorize(Policy = PolicyNames.AdminAuthLevelOrInternal)]
         public IActionResult GetHostStatus()
         {
             var status = new HostStatus
@@ -132,17 +78,15 @@ namespace Microsoft.Azure.WebJobs.Script.WebHost.Controllers
             return Ok(status);
         }
 
-        [HttpPost]
-        [Route("admin/host/ping")]
+        [HttpPost("admin/host/ping")]
         [AllowAnonymous]
         public IActionResult Ping()
         {
             return Ok();
         }
 
-        [HttpPost]
-        [Route("admin/host/log")]
-        [Authorize(Policy = PolicyNames.AdminAuthLevelOrInternal)]
+        [HttpPost("admin/host/log")]
+        //[Authorize(Policy = PolicyNames.AdminAuthLevelOrInternal)]
         public IActionResult Log(IEnumerable<HostLogEntry> logEntries)
         {
             foreach (var logEntry in logEntries)
@@ -165,9 +109,8 @@ namespace Microsoft.Azure.WebJobs.Script.WebHost.Controllers
             return Ok();
         }
 
-        [HttpPost]
-        [Route("admin/host/debug")]
-        [Authorize(Policy = PolicyNames.AdminAuthLevel)]
+        [HttpPost("admin/host/debug")]
+        //[Authorize(Policy = PolicyNames.AdminAuthLevel)]
         public IActionResult LaunchDebugger()
         {
             if (_webHostSettings.IsSelfHost)

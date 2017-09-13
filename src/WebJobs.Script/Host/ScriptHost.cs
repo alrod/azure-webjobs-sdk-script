@@ -515,7 +515,7 @@ namespace Microsoft.Azure.WebJobs.Script
                 _directorySnapshot = Directory.EnumerateDirectories(ScriptConfig.RootScriptPath).ToImmutableArray();
 
                 // Scan the function.json early to determine the requirements.
-                var functionMetadata = ReadFunctionMetadata(ScriptConfig, TraceWriter, _startupLogger, FunctionErrors, _settingsManager);
+                var functionMetadata = ReadFunctionsMetadata(ScriptConfig, TraceWriter, _startupLogger, FunctionErrors, _settingsManager);
                 var usedBindingTypes = DiscoverBindingTypes(functionMetadata);
 
                 bool useLazyLoad = false; // todo - https://github.com/Azure/azure-webjobs-sdk-script/issues/1637
@@ -1154,7 +1154,7 @@ namespace Microsoft.Azure.WebJobs.Script
             return functionMetadata;
         }
 
-        public static Collection<FunctionMetadata> ReadFunctionMetadata(ScriptHostConfiguration config, TraceWriter traceWriter, ILogger logger, Dictionary<string, Collection<string>> functionErrors, ScriptSettingsManager settingsManager = null)
+        public static Collection<FunctionMetadata> ReadFunctionsMetadata(ScriptHostConfiguration config, TraceWriter traceWriter, ILogger logger, Dictionary<string, Collection<string>> functionErrors, ScriptSettingsManager settingsManager = null)
         {
             var functions = new Collection<FunctionMetadata>();
             settingsManager = settingsManager ?? ScriptSettingsManager.Instance;
@@ -1166,55 +1166,65 @@ namespace Microsoft.Azure.WebJobs.Script
 
             foreach (var scriptDir in Directory.EnumerateDirectories(config.RootScriptPath))
             {
-                string functionName = null;
-
-                try
+                var function = ReadFunctionMetadata(scriptDir, config, traceWriter, logger, functionErrors, settingsManager);
+                if (function != null)
                 {
-                    // read the function config
-                    string functionConfigPath = Path.Combine(scriptDir, ScriptConstants.FunctionMetadataFileName);
-                    if (!File.Exists(functionConfigPath))
-                    {
-                        // not a function directory
-                        continue;
-                    }
-
-                    functionName = Path.GetFileName(scriptDir);
-
-                    if (config.Functions != null &&
-                        !config.Functions.Contains(functionName, StringComparer.OrdinalIgnoreCase))
-                    {
-                        // a functions filter has been specified and the current function is
-                        // not in the filter list
-                        continue;
-                    }
-
-                    ValidateFunctionName(functionName);
-
-                    string json = File.ReadAllText(functionConfigPath);
-                    JObject functionConfig = JObject.Parse(json);
-
-                    string functionError = null;
-                    FunctionMetadata functionMetadata = null;
-                    if (!TryParseFunctionMetadata(functionName, functionConfig, traceWriter, logger, scriptDir, settingsManager, out functionMetadata, out functionError))
-                    {
-                        // for functions in error, log the error and don't
-                        // add to the functions collection
-                        AddFunctionError(functionErrors, functionName, functionError);
-                        continue;
-                    }
-                    else if (functionMetadata != null)
-                    {
-                        functions.Add(functionMetadata);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    // log any unhandled exceptions and continue
-                    AddFunctionError(functionErrors, functionName, Utility.FlattenException(ex, includeSource: false), isFunctionShortName: true);
+                    functions.Add(function);
                 }
             }
 
             return functions;
+        }
+
+        public static FunctionMetadata ReadFunctionMetadata(string scriptDir, ScriptHostConfiguration config, TraceWriter traceWriter, ILogger logger, Dictionary<string, Collection<string>> functionErrors, ScriptSettingsManager settingsManager = null)
+        {
+            string functionName = null;
+
+            try
+            {
+                // read the function config
+                string functionConfigPath = Path.Combine(scriptDir, ScriptConstants.FunctionMetadataFileName);
+                if (!File.Exists(functionConfigPath))
+                {
+                    // not a function directory
+                    return null;
+                }
+
+                functionName = Path.GetFileName(scriptDir);
+
+                if (config.Functions != null &&
+                    !config.Functions.Contains(functionName, StringComparer.OrdinalIgnoreCase))
+                {
+                    // a functions filter has been specified and the current function is
+                    // not in the filter list
+                    return null;
+                }
+
+                ValidateFunctionName(functionName);
+
+                string json = File.ReadAllText(functionConfigPath);
+                JObject functionConfig = JObject.Parse(json);
+
+                string functionError = null;
+                FunctionMetadata functionMetadata = null;
+                if (!TryParseFunctionMetadata(functionName, functionConfig, traceWriter, logger, scriptDir, settingsManager, out functionMetadata, out functionError))
+                {
+                    // for functions in error, log the error and don't
+                    // add to the functions collection
+                    AddFunctionError(functionErrors, functionName, functionError);
+                    return null;
+                }
+                else if (functionMetadata != null)
+                {
+                    return functionMetadata;
+                }
+            }
+            catch (Exception ex)
+            {
+                // log any unhandled exceptions and continue
+                AddFunctionError(functionErrors, functionName, Utility.FlattenException(ex, includeSource: false), isFunctionShortName: true);
+            }
+            return null;
         }
 
         internal Collection<FunctionMetadata> ReadProxyMetadata(ScriptHostConfiguration config, ScriptSettingsManager settingsManager = null)
@@ -1407,27 +1417,38 @@ namespace Microsoft.Azure.WebJobs.Script
                 case "csx":
                 case "cs":
                     return ScriptType.CSharp;
+
                 case "js":
                     return ScriptType.Javascript;
+
                 case "ts":
                     return ScriptType.TypeScript;
+
                 case "ps1":
                     return ScriptType.PowerShell;
+
                 case "cmd":
                 case "bat":
                     return ScriptType.WindowsBatch;
+
                 case "py":
                     return ScriptType.Python;
+
                 case "php":
                     return ScriptType.PHP;
+
                 case "sh":
                     return ScriptType.Bash;
+
                 case "fsx":
                     return ScriptType.FSharp;
+
                 case "dll":
                     return ScriptType.DotNetAssembly;
+
                 case "jar":
                     return ScriptType.JavaArchive;
+
                 default:
                     return ScriptType.Unknown;
             }
