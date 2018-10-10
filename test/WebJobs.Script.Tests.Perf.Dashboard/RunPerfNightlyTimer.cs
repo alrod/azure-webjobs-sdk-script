@@ -11,7 +11,7 @@ namespace WebJobs.Script.Tests.Perf.Dashboard
         [FunctionName("RunPerfNightlyTimer")]
         public static async Task Run([TimerTrigger("0 0 14 * * *")]TimerInfo myTimer, ILogger log)
         {
-            log.LogInformation($"C# Timer trigger function executed at: {DateTime.Now}");
+            log.LogInformation($"Performance tests were started by timer trigger at: {DateTime.Now}");
 
             await AppVeyorClient.StartPerf(log);
         }

@@ -17,24 +17,20 @@ environment:
     - JAVA_HOME: C:\Program Files\Java\jdk1.8.0    
 
 install:
-  - ps: Get-Command mvn
-  - cmd: mvn -v
-  - ps: Get-Command nuget
-  - cmd: echo %JAVA_HOME%
-  - cmd: dotnet --info
-  - cmd: npm i -g azure-functions-core-tools
+  - ps: | 
+        Get-Command mvn  
+        Get-Command nuget
+  - cmd: |
+        mvn -v
+        echo %JAVA_HOME%
+        dotnet --info
+        npm i -g azure-functions-core-tools
   
 before_build:
-  - ps: nuget restore WebJobs.Script.Tests.Perf.sln -Verbosity quiet
-  - ps: cd .\test\WebJobs.Script.Tests.Perf\Artifacts\PS
-  - ps: .\build-jar.ps1
+  - ps: |
+        nuget restore WebJobs.Script.Tests.Perf.sln -Verbosity quiet
+        cd .\test\WebJobs.Script.Tests.Perf\Artifacts\PS
+        .\build-jar.ps1
 
 build:
   project: WebJobs.Script.Tests.Perf.sln
-
-
- 
-
-
-
-  

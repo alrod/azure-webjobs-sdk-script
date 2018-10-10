@@ -17,7 +17,7 @@ namespace WebJobs.Script.Tests.Perf.Dashboard
         [FunctionName("RunPerfHttp")]
         public static async Task<IActionResult> Run([HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)]HttpRequest req, ILogger log)
         {
-            log.LogInformation($"C# Http trigger function executed at: {DateTime.Now}");
+            log.LogInformation($"Performance tests were started by http trigger at: {DateTime.Now}");
 
             await AppVeyorClient.StartPerf(log);
 
