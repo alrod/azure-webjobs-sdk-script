@@ -56,6 +56,8 @@ namespace WebJobs.Script.Tests.EndToEnd.Shared
 
         public KuduClient KuduClient => _kuduClient;
 
+        public ILogger Logger => _logger;
+
         public string FunctionDefaultKey { get; }
 
         public string FunctionAppMasterKey { get; private set; }
