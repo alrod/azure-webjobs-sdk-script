@@ -32,17 +32,25 @@ namespace WebJobs.Script.Tests.EndToEnd.Shared
             {
                 var address = string.Format(TokenEndpoint, tenantId);
                 var content = new StringContent(payload, Encoding.UTF8, "application/x-www-form-urlencoded");
-                using (var response = await client.PostAsync(address, content))
+                try
                 {
-                    if (!response.IsSuccessStatusCode)
+                    using (var response = await client.PostAsync(address, content))
                     {
-                        Console.WriteLine("Status:  {0}", response.StatusCode);
-                        Console.WriteLine("Content: {0}", await response.Content.ReadAsStringAsync());
+                        if (!response.IsSuccessStatusCode)
+                        {
+                            Console.WriteLine("Status:  {0}", response.StatusCode);
+                            Console.WriteLine("Content: {0}", await response.Content.ReadAsStringAsync());
+                        }
+
+                        response.EnsureSuccessStatusCode();
+
+                        return await response.Content.ReadAsAsync<dynamic>();
                     }
-
-                    response.EnsureSuccessStatusCode();
-
-                    return await response.Content.ReadAsAsync<dynamic>();
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine(ex.ToString());
+                    throw ex;
                 }
             }
         }

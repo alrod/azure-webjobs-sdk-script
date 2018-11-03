@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Clients.ActiveDirectory;
 using Microsoft.Rest;
 using System;
+using System.Linq;
 using System.Collections.Generic;
 using System.Security.Authentication;
 using System.Threading;
@@ -17,11 +18,13 @@ namespace WebJobs.Script.PerformanceMeter
     {
         private readonly FunctionAppFixture _fixture;
         private readonly ComputeManagementClient _client;
+        private readonly List<TestDefinition> _tests;
         private bool _disposed = false;
+        private string _currentExecutionRuntime;
 
-        public PerformanceManager(string runtimeExtensionPackageUrl)
+        public PerformanceManager()
         {
-            _fixture = new FunctionAppFixture(runtimeExtensionPackageUrl);
+            _fixture = new FunctionAppFixture();
 
             var authenticationContext = new AuthenticationContext($"https://login.windows.net/{Settings.SiteTenantId}");
             var credential = new ClientCredential(Settings.SiteApplicationId, Settings.SiteClientSecret);
@@ -35,21 +38,47 @@ namespace WebJobs.Script.PerformanceMeter
             _client = new ComputeManagementClient(credentials);
             _client.SubscriptionId = Settings.SiteSubscriptionId;
 
+            _tests = new List<TestDefinition>()
+            {
+                new TestDefinition()
+                {
+                    FileName = "win-csharp-ping.jmx",
+                    Desciption = "C# Ping",
+                    Runtime = "dotnet"
+                },
+                new TestDefinition()
+                {
+                    FileName = "win-js-ping.jmx",
+                    Desciption = "JS Ping",
+                    Runtime = "node"
+                },
+                new TestDefinition()
+                {
+                    FileName = "win-java-ping.jmx",
+                    Desciption = "Java Ping",
+                    Runtime = "java"
+                }
+            };
         }
 
         public async Task ExecuteAsync(string testId)
         {
             // We are assume first word in testId is paltform
-            string platform = testId.Split("-")[0];
-            string description = "Desc";
-            await ChangeLanguage(platform);
 
-            _fixture.Logger.LogInformation($"Execute: {testId}, {description}");
+            var test = _tests.FirstOrDefault(x => x.FileName.ToLower() == testId.ToLower());
+            if (test == null)
+            {
+                Console.WriteLine($"Test '{testId}' is not found");
+            }
+            else
+            {
+                await ChangeExecutionRuntime(test.Runtime);
+                _fixture.Logger.LogInformation($"Executing: {test.FileName}, {test.Desciption}");
 
-            var commandResult = await VirtualMachinesOperationsExtensions.RunCommandAsync(_client.VirtualMachines, Settings.SiteResourceGroup, Settings.VM,
-                new RunCommandInput("RunPowerShellScript",
-                new List<string>() { $"& 'C:\\Tools\\ps\\test-throughput.ps1' '{testId}' '{description}' '{Settings.RuntimeVersion}'" }));
-
+                var commandResult = await VirtualMachinesOperationsExtensions.RunCommandAsync(_client.VirtualMachines, Settings.SiteResourceGroup, Settings.VM,
+                    new RunCommandInput("RunPowerShellScript",
+                    new List<string>() { $"& 'C:\\Tools\\ps\\test-throughput.ps1' '{test.FileName}' '{test.Desciption}' '{Settings.RuntimeVersion}'" }));
+            }
         }
 
         public void Dispose()
@@ -68,19 +97,39 @@ namespace WebJobs.Script.PerformanceMeter
 
         public async Task ExecuteAllAsync()
         {
-            var commandResult = await VirtualMachinesOperationsExtensions.RunCommandAsync(_client.VirtualMachines, Settings.SiteResourceGroup, Settings.VM,
-                new RunCommandInput("RunPowerShellScript",
-                new List<string>() { $"& 'C:\\Tools\\ps\\get-all-tests.ps1'" }));
+            foreach(var test in _tests)
+            {
+                await ExecuteAsync(test.FileName);
+            }
         }
 
-        private async Task ChangeLanguage(string language)
+        private async Task ChangeExecutionRuntime(string runtime)
         {
-            _fixture.Logger.LogInformation($"Changing language: {language}");
-            await _fixture.AddAppSetting("FUNCTIONS_WORKER_RUNTIME", language);
+            if (_currentExecutionRuntime != runtime)
+            {
+                _fixture.Logger.LogInformation($"Changing execution runtime: {runtime}");
+                await _fixture.AddAppSetting("FUNCTIONS_WORKER_RUNTIME", runtime);
 
-            // Wait until the app fully restaeted and ready
-            Thread.Sleep(30000);
-            await _fixture.KuduClient.GetFunctions();
+                // Wait until the app fully restaeted and ready
+                Thread.Sleep(30000);
+                await _fixture.KuduClient.GetFunctions();
+                _fixture.Logger.LogInformation($"Execution runtime is successfully changed: {runtime}");
+
+                _currentExecutionRuntime = runtime;
+            }
+            else
+            {
+                _fixture.Logger.LogInformation($"Execution runtime: {runtime}");
+            }
         }
+    }
+
+    class TestDefinition
+    {
+        public string FileName { get; set; }
+
+        public string Runtime { get; set; }
+
+        public string Desciption { get; set; }
     }
 }

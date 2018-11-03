@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using CommandLine;
+using WebJobs.Script.Tests.EndToEnd.Shared;
 
 namespace WebJobs.Script.PerformanceMeter
 {
@@ -25,26 +26,34 @@ namespace WebJobs.Script.PerformanceMeter
 
         static async Task MainAsync(string[] args)
         {
-            Parser.Default.ParseArguments<Options>(args)
-                .WithParsed<Options>(async o =>
+            //args = new string[] { "-t", "win-csharp-ping.jmx", "-r", "https://ci.appveyor.com/api/buildjobs/ax3jch5m0d57hdkm/artifacts/Functions.Private.2.0.12165.win-x32.inproc.zip" };
+            args = new string[] { "-r", "https://ci.appveyor.com/api/buildjobs/ax3jch5m0d57hdkm/artifacts/Functions.Private.2.0.12165.win-x32.inproc.zip" };
+
+            var result = Parser.Default.ParseArguments<Options>(args);
+            await result.MapResult(
+                async (Options opts) => await RunAddAndReturnExitCodeAsync(opts),
+                err => Task.FromResult(-1));
+        }
+
+        static async Task RunAddAndReturnExitCodeAsync(Options o)
+        {
+            Settings.RuntimeExtensionPackageUrl = o.RuntimeExtensionPackageUrl;
+            using (PerformanceManager manager = new PerformanceManager())
+            {
+                if (o.Tests.ToArray().Length > 0)
                 {
-                    using (PerformanceManager manager = new PerformanceManager(o.RuntimeExtensionPackageUrl))
+                    foreach (var test in o.Tests)
                     {
-                        if (o.Tests.ToArray().Length > 0)
-                        {
-                            foreach(var test in o.Tests)
-                            {
-                                Console.WriteLine($"Executing specified test '{test}'...");
-                                await manager.ExecuteAsync(test);
-                            }
-                        }
-                        else
-                        {
-                            Console.WriteLine("Executing all available tests...");
-                            await manager.ExecuteAllAsync();
-                        }
+                        Console.WriteLine($"Executing specified test '{test}'...");
+                        await manager.ExecuteAsync(test);
                     }
-                });
+                }
+                else
+                {
+                    Console.WriteLine("Executing all available tests...");
+                    await manager.ExecuteAllAsync();
+                }
+            }
         }
     }
 }
