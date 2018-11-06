@@ -23,12 +23,14 @@ namespace WebJobs.Script.Tests.Perf.Dashboard
             string functionsHostSlug = Environment.GetEnvironmentVariable("FunctionHostProjectSlug", EnvironmentVariableTarget.Process);
             string performanceMeterSlug = Environment.GetEnvironmentVariable("PerformanceProjectSlug", EnvironmentVariableTarget.Process);
             string extensionUrl = string.Empty;
+            string appUrl = string.Empty;
 
             using (var appVeyorClient = new AppVeyorClient(log))
             {
                 // Get latest private extension url from appvayor build
                 string lastSuccessfulVersion = await appVeyorClient.GetLastSuccessfulBuildVersionAsync("dev", functionsHostSlug);
                 extensionUrl = await appVeyorClient.GetArtifactUrlAsync(lastSuccessfulVersion, functionsHostSlug, "Image: Visual Studio 2017", "inproc");
+                appUrl = await appVeyorClient.GetArtifactUrlAsync(lastSuccessfulVersion, functionsHostSlug, "Image: Visual Studio 2017", "WebJobs.Script.Performance.App");
             }
 
             var authenticationContext = new AuthenticationContext($"https://login.windows.net/{tenantId}");
@@ -43,10 +45,11 @@ namespace WebJobs.Script.Tests.Perf.Dashboard
             using (var client = new ComputeManagementClient(credentials))
             {
                 client.SubscriptionId = subscriptionId;
-                string command = string.IsNullOrEmpty(testIds) ? "'-a'" : $"'-t' '{testIds}'";
+                string command = string.IsNullOrEmpty(testIds) ? string.Empty : $"'-t' '{testIds}'";
+                command += string.IsNullOrEmpty(extensionUrl) ? string.Empty : $" '-r' '{extensionUrl}'";
                 var commandResult = await VirtualMachinesOperationsExtensions.RunCommandAsync(client.VirtualMachines, siteResourceGroup, vm,
                     new RunCommandInput("RunPowerShellScript",
-                    new List<string>() { $"& 'C:\\Tools\\ps\\perf.ps1' '{extensionUrl}' {command}" }));
+                    new List<string>() { $"& 'C:\\Tools\\ps\\run.ps1' '{appUrl}' '{extensionUrl}' {command}" }));
             }
         }
     }

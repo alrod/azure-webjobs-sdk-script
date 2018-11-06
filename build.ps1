@@ -286,7 +286,6 @@ foreach ($project in $projects)
 
 $cmd = "pack", "tools\WebJobs.Script.PerformanceMeter\WebJobs.Script.Performance.App\WebJobs.Script.Performance.App.csproj", "-o", "..\..\..\buildoutput"#, "--version-suffix", "$buildNumber"
 & dotnet $cmd
-exit
 
 $bypassPackaging = $env:APPVEYOR_PULL_REQUEST_NUMBER -and -not $env:APPVEYOR_PULL_REQUEST_TITLE.Contains("[pack]")
 

@@ -139,7 +139,7 @@ namespace WebJobs.Script.Tests.Perf.Dashboard
                 string siteExtensionFileName = artifacts.Select(p => p.FileName).Single(p => p.Contains(artifact));
 
                 siteExtensionUrl = $"https://ci.appveyor.com/api/buildjobs/{jobId}/artifacts/{siteExtensionFileName}";
-                _logger.LogInformation($"Found private site extension: '{siteExtensionFileName}'");
+                _logger.LogInformation($"Found artifact: '{siteExtensionFileName}'");
             }
 
             return siteExtensionUrl;
