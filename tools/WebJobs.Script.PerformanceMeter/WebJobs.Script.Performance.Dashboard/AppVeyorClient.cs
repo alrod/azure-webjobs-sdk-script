@@ -28,40 +28,6 @@ namespace WebJobs.Script.Tests.Perf.Dashboard
             _accountName = Environment.GetEnvironmentVariable("AccountName", EnvironmentVariableTarget.Process);
         }
 
-        //public static async Task StartPerf(ILogger logger)
-        //{
-        //    AppVeyorClient client = new AppVeyorClient(logger);
-        //    await client.StartBuild(new Build()
-        //    {
-        //        Branch = Environment.GetEnvironmentVariable("PerformanceBranch", EnvironmentVariableTarget.Process),
-        //        ProjectSlug = Environment.GetEnvironmentVariable("PerformanceProjectSlug", EnvironmentVariableTarget.Process),
-        //        Artifact = "inproc",
-        //        JobName = "Image: Visual Studio 2017"
-        //    });
-        //}
-
-        //public async Task StartBuild(Build build)
-        //{
-        //    string lastSuccessfulBuild = await GetLastSuccessfulBuildVersionAsync(build.Branch);
-
-        //    if (lastSuccessfulBuild == null)
-        //    {
-        //        _logger.LogInformation("No sucessful builds found.");
-        //        return;
-        //    }
-
-        //    string extensionUrl = await GetPrivateSiteExtensionUrlAsync(lastSuccessfulBuild, build);
-
-        //    if (extensionUrl == null)
-        //    {
-        //        _logger.LogInformation("Could not find private site extension.");
-        //        return;
-        //    }
-
-        //    //await UpdateEnvironmentVariableAsync(build.ProjectSlug, extensionUrl);
-        //    await StartEndToEndBuildAsync(build.ProjectSlug, build.Branch);
-        //}
-
         public void Dispose()
         {
             this.Dispose(true);
@@ -117,10 +83,10 @@ namespace WebJobs.Script.Tests.Perf.Dashboard
             return buildVersion;
         }
 
-        public async Task<string> GetArtifactUrlAsync(string buildVersion, string projectSlug, string jobName, string artifact)
+        public async Task<string> GetArtifactUrlAsync(string buildVersion, string projectSlug, string jobName, string artifactSubString)
         {
             string jobId = null;
-            string siteExtensionUrl = null;
+            string artifactUrl = null;
 
             if (buildVersion != null)
             {
@@ -136,13 +102,13 @@ namespace WebJobs.Script.Tests.Perf.Dashboard
                 response.EnsureSuccessStatusCode();
                 var artifacts = await response.Content.ReadAsAsync<AppVeyorArtifact[]>();
 
-                string siteExtensionFileName = artifacts.Select(p => p.FileName).Single(p => p.Contains(artifact));
+                var artifact = artifacts.FirstOrDefault(p => p.FileName.Contains(artifactSubString));
+                artifactUrl = artifact == null ? string.Empty : $"https://ci.appveyor.com/api/buildjobs/{jobId}/artifacts/{artifact.FileName}";
 
-                siteExtensionUrl = $"https://ci.appveyor.com/api/buildjobs/{jobId}/artifacts/{siteExtensionFileName}";
-                _logger.LogInformation($"Found artifact: '{siteExtensionFileName}'");
+                _logger.LogInformation($"Found artifact: '{artifactUrl}'");
             }
 
-            return siteExtensionUrl;
+            return artifactUrl;
         }
 
         public async Task UpdateEnvironmentVariableAsync(string projectSlug, string siteExtensionUrl)

@@ -29,6 +29,21 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Update="Artifacts\Java\host.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Artifacts\Java\local.settings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Artifacts\Java\pom.xml">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Artifacts\Java\src\main\java\test\Function.java">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Artifacts\PS\build-jar.ps1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Update="Functions\wwwroot\CSharpPing\function.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

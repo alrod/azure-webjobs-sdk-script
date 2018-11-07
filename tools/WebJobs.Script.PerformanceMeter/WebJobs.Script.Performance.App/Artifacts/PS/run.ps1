@@ -1,31 +1,46 @@
 ﻿param (
-	[string]$nupkgUrl = "https://functionsperfst.blob.core.windows.net/test/WebJobs.Script.Performance.App.1.0.0.nupkg",
-    [string]$args = "'-t' 'win-csharp-ping.jmx' '-r' 'https://ci.appveyor.com/api/buildjobs/ax3jch5m0d57hdkm/artifacts/Functions.Private.2.0.12165.win-x32.inproc.zip'"
+	[string]$toolNupkgUrl = "https://functionsperfst.blob.core.windows.net/test/WebJobs.Script.Performance.App.1.0.0.nupkg",
+    [string]$toolArgs = "-r https://ci.appveyor.com/api/buildjobs/ax3jch5m0d57hdkm/artifacts/Functions.Private.2.0.12165.win-x32.inproc.zip"
 )
 
-$toolPath = "C:\Tools\WebJobs.Script.Performance.App"
+$location = Get-Location
+$currentTime = "$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH_mm_ss'))"
+Start-Transcript -path "$location\run$currentTime.log" -append
 
+Write-Output "Tool: $toolNupkgUrl"
+Write-Output "Args: $toolArgs"
 
-if ([string]::IsNullOrEmpty($extensionUrl)) {
-	Write-Host "Extension url is not defined"
+if ([string]::IsNullOrEmpty($nupkgUrl)) {
+	Write-Host "Tool url is not defined"
 	exit
 }
 
-Invoke-Expression .\build-jar.ps1
+if ([string]::IsNullOrEmpty($toolArgs)) {
+	Write-Host "Arguments for the tool is not defined"
+	exit
+}
+
+$toolPath = "C:\Tools\WebJobs.Script.Performance.App"
+$binPath = "$toolPath\.store\webjobs.script.performance.app\1.0.0\webjobs.script.performance.app\1.0.0\tools\netcoreapp2.1\any\";
 
 $tempFolderName = [System.IO.Path]::GetFileNameWithoutExtension([System.IO.Path]::GetTempFileName())
 $tempFolder = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath() ,$tempFolderName)
 [System.IO.Directory]::CreateDirectory($tempFolder)
-$filename = $nupkgUrl.Substring($nupkgUrl.LastIndexOf("/") + 1)
+$filename = $toolNupkgUrl.Substring($toolNupkgUrl.LastIndexOf("/") + 1)
 $nupkgPath = "$tempFolder\$filename"
-    
-
-Write-Host "Downloading '$nupkgUrl' to '$nupkgPath'"
-Invoke-WebRequest -Uri $nupkgUrl -OutFile $nupkgPath
+   
+Write-Host "Downloading '$toolNupkgUrl' to '$nupkgPath'"
+Invoke-WebRequest -Uri $toolNupkgUrl -OutFile $nupkgPath
 
 & dotnet tool update "WebJobs.Script.Performance.App" --add-source "$tempFolder" --tool-path $toolPath
 
-& $toolPath\WebJobs.Script.Performance.App.exe $args
+# copy settings
+Copy-Item -Path "$toolPath\local.settings.json" -Destination $binPath -Force
 
-#C:\git\V2-azure-webjobs-sdk-script\tools\WebJobs.Script.PerformanceMeter\WebJobs.Script.PerformanceMeter>dotnet tool install WebJobs.Script.PerformanceMeter --tool-path "C:\Tools\WebJobs.Script.PerformanceMeter" --add-source "C:\git\V2-azure-webjobs-sdk-script\tools\WebJobs.Script.PerformanceMeter\WebJobs.Script.PerformanceMeter\nupkg"
-#C:\git\V2-azure-webjobs-sdk-script\buildoutput>dotnet tool install WebJobs.Script.Performance.App --tool-path "C:\Tools\WebJobs.Script.Performance.App" --add-source "C:\git\V2-azure-webjobs-sdk-script\buildoutput"
+Push-Location "$binPath\Artifacts\PS"
+Invoke-Expression "$binPath\Artifacts\PS\build-jar.ps1"
+Pop-Location
+
+Push-Location $binPath
+& $toolPath\WebJobs.Script.Performance.App.exe $toolArgs
+Pop-Location

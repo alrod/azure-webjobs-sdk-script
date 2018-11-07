@@ -45,11 +45,11 @@ namespace WebJobs.Script.Tests.Perf.Dashboard
             using (var client = new ComputeManagementClient(credentials))
             {
                 client.SubscriptionId = subscriptionId;
-                string command = string.IsNullOrEmpty(testIds) ? string.Empty : $"'-t' '{testIds}'";
-                command += string.IsNullOrEmpty(extensionUrl) ? string.Empty : $" '-r' '{extensionUrl}'";
+                string command = string.IsNullOrEmpty(testIds) ? string.Empty : $"-t {testIds}";
+                command += string.IsNullOrEmpty(extensionUrl) ? string.Empty : $" -r {extensionUrl}";
                 var commandResult = await VirtualMachinesOperationsExtensions.RunCommandAsync(client.VirtualMachines, siteResourceGroup, vm,
                     new RunCommandInput("RunPowerShellScript",
-                    new List<string>() { $"& 'C:\\Tools\\ps\\run.ps1' '{appUrl}' '{extensionUrl}' {command}" }));
+                    new List<string>() { $"& 'C:\\Tools\\ps\\run.ps1' '{appUrl}' '{command}'" }));
             }
         }
     }
