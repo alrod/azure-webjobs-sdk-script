@@ -19,7 +19,10 @@ namespace WebJobs.Script.Tests.Perf.Dashboard
         {
             log.LogInformation($"Performance tests were started by http trigger at: {DateTime.Now}");
 
-            await PerformanceManager.Execute(string.Empty, log);
+            string testIds = string.Empty;
+            var t = req.GetQueryParameterDictionary().TryGetValue("testIds", out testIds);
+
+            await PerformanceManager.Execute(testIds, log);
 
             return new ContentResult()
             {

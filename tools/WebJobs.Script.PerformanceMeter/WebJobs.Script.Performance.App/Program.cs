@@ -26,13 +26,13 @@ namespace WebJobs.Script.PerformanceMeter
 
         static async Task MainAsync(string[] args)
         {
-            Console.WriteLine("Args:");
+            args = new string[] { "-t", "win-csharp-ping.jmx", "-r", "https://ci.appveyor.com/api/buildjobs/ax3jch5m0d57hdkm/artifacts/Functions.Private.2.0.12165.win-x32.inproc.zip" };
+            Console.Write("Args:");
             foreach (string a in args)
             {
                 Console.Write(a + " ");
             }
-
-            //args = new string[] { "'-r'", "'https://ci.appveyor.com/api/buildjobs/ax3jch5m0d57hdkm/artifacts/Functions.Private.2.0.12165.win-x32.inproc.zip'" };
+            Console.WriteLine();
 
             var result = Parser.Default.ParseArguments<Options>(args);
             await result.MapResult(
