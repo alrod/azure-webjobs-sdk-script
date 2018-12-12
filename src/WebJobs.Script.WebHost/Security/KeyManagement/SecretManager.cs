@@ -9,6 +9,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Azure.KeyVault.Models;
 using Microsoft.Azure.WebJobs.Script.Config;
 using Microsoft.Azure.WebJobs.Script.WebHost.Properties;
 using Microsoft.Extensions.Logging;
@@ -30,7 +31,7 @@ namespace Microsoft.Azure.WebJobs.Script.WebHost
         }
 
         public SecretManager(ISecretsRepository repository, ILogger logger, bool createHostSecretsIfMissing = false)
-            : this(repository, new DefaultKeyValueConverterFactory(), logger, createHostSecretsIfMissing)
+            : this(repository, new DefaultKeyValueConverterFactory(repository.IsEncryptionSupported), logger, createHostSecretsIfMissing)
         {
         }
 
@@ -291,7 +292,13 @@ namespace Microsoft.Azure.WebJobs.Script.WebHost
                 }
 
                 return secrets;
-            }, secretsFactory);
+            }, secretsFactory).ContinueWith(t =>
+            {
+                if (t.IsFaulted && t.Exception.InnerException is KeyVaultErrorException)
+                {
+                    result = OperationResult.Forbidden;
+                }
+            });
 
             return new KeyOperationResult(secret, result);
         }
@@ -337,28 +344,18 @@ namespace Microsoft.Azure.WebJobs.Script.WebHost
         private Task<FunctionSecrets> LoadFunctionSecretsAsync(string functionName)
             => LoadSecretsAsync<FunctionSecrets>(functionName);
 
-        private Task<ScriptSecrets> LoadSecretsAsync(ScriptSecretsType secretsType, string keyScope)
-            => LoadSecretsAsync(secretsType, keyScope, s => ScriptSecretSerializer.DeserializeSecrets(secretsType, s));
-
         private async Task<T> LoadSecretsAsync<T>(string keyScope = null) where T : ScriptSecrets
         {
             ScriptSecretsType type = GetSecretsType<T>();
 
-            var result = await LoadSecretsAsync(type, keyScope, ScriptSecretSerializer.DeserializeSecrets<T>);
+            var result = await LoadSecretsAsync(type, keyScope);
 
             return result as T;
         }
 
-        private async Task<ScriptSecrets> LoadSecretsAsync(ScriptSecretsType type, string keyScope, Func<string, ScriptSecrets> deserializationHandler)
+        private async Task<ScriptSecrets> LoadSecretsAsync(ScriptSecretsType type, string keyScope)
         {
-            string secretsJson = await _repository.ReadAsync(type, keyScope).ConfigureAwait(false);
-
-            if (!string.IsNullOrEmpty(secretsJson))
-            {
-                return deserializationHandler(secretsJson);
-            }
-
-            return null;
+            return await _repository.ReadAsync(type, keyScope).ConfigureAwait(false);
         }
 
         private static ScriptSecretsType GetSecretsType<T>() where T : ScriptSecrets
@@ -431,22 +428,21 @@ namespace Microsoft.Azure.WebJobs.Script.WebHost
         private async Task PersistSecretsAsync<T>(T secrets, string keyScope = null, bool isNonDecryptable = false) where T : ScriptSecrets
         {
             ScriptSecretsType secretsType = secrets.SecretsType;
-            string secretsContent = ScriptSecretSerializer.SerializeSecrets<T>(secrets);
             if (isNonDecryptable)
             {
                 string[] secretBackups = await _repository.GetSecretSnapshots(secrets.SecretsType, keyScope);
 
                 if (secretBackups.Length >= ScriptConstants.MaximumSecretBackupCount)
                 {
-                    string message = string.Format(Resources.ErrorTooManySecretBackups, ScriptConstants.MaximumSecretBackupCount, string.IsNullOrEmpty(keyScope) ? "host" : keyScope, await AnalyzeSnapshots<T>(secretBackups));
+                    string message = string.Format(Resources.ErrorTooManySecretBackups, ScriptConstants.MaximumSecretBackupCount, string.IsNullOrEmpty(keyScope) ? "host" : keyScope, await AnalyzeSnapshots(secretBackups));
                     _logger?.LogDebug(message);
                     throw new InvalidOperationException(message);
                 }
-                await _repository.WriteSnapshotAsync(secretsType, keyScope, secretsContent);
+                await _repository.WriteSnapshotAsync(secretsType, keyScope, secrets);
             }
             else
             {
-                await _repository.WriteAsync(secretsType, keyScope, secretsContent);
+                await _repository.WriteAsync(secretsType, keyScope, secrets);
             }
         }
 
@@ -502,16 +498,16 @@ namespace Microsoft.Azure.WebJobs.Script.WebHost
             }
         }
 
-        private async Task<string> AnalyzeSnapshots<T>(string[] secretBackups) where T : ScriptSecrets
+        private async Task<string> AnalyzeSnapshots(string[] secretBackups)
         {
             string analyzeResult = string.Empty;
             try
             {
-                List<T> shapShots = new List<T>();
+                List<ScriptSecrets> shapShots = new List<ScriptSecrets>();
                 foreach (string secretPath in secretBackups)
                 {
-                    string secretString = await _repository.ReadAsync(ScriptSecretsType.Function, Path.GetFileNameWithoutExtension(secretPath));
-                    shapShots.Add(ScriptSecretSerializer.DeserializeSecrets<T>(secretString));
+                    ScriptSecrets secrets = await _repository.ReadAsync(ScriptSecretsType.Function, Path.GetFileNameWithoutExtension(secretPath));
+                    shapShots.Add(secrets);
                 }
                 string[] hosts = shapShots.Select(x => x.HostName).Distinct().ToArray();
                 if (hosts.Length > 1)
