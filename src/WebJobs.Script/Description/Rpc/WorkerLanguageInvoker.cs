@@ -2,6 +2,7 @@
 // Licensed under the MIT License. See License.txt in the project root for license information.
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
@@ -14,6 +15,8 @@ using Microsoft.Azure.WebJobs.Script.Binding;
 using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json.Linq;
+using StackExchange.Profiling;
+using StackExchange.Profiling.Storage;
 
 namespace Microsoft.Azure.WebJobs.Script.Description
 {
@@ -24,6 +27,9 @@ namespace Microsoft.Azure.WebJobs.Script.Description
         private readonly BindingMetadata _trigger;
         private readonly Action<ScriptInvocationResult> _handleScriptReturnValue;
         private readonly BufferBlock<ScriptInvocationContext> _invocationBuffer;
+        private static MiniProfiler mp;
+        private static object lockObject = new object();
+        private static ConcurrentDictionary<string, Timing> dic = new ConcurrentDictionary<string, Timing>();
 
         internal WorkerLanguageInvoker(ScriptHost host, BindingMetadata trigger, FunctionMetadata functionMetadata, ILoggerFactory loggerFactory,
             Collection<FunctionBinding> inputBindings, Collection<FunctionBinding> outputBindings, BufferBlock<ScriptInvocationContext> invocationBuffer)
@@ -46,35 +52,72 @@ namespace Microsoft.Azure.WebJobs.Script.Description
             }
         }
 
+        public static ConcurrentDictionary<string, Timing> Dic => dic;
+
+        public static MiniProfiler MPInstance()
+        {
+            if (mp == null)
+            {
+                lock (lockObject)
+                {
+                    if (mp != null)
+                    {
+                        return mp;
+                    }
+                    // Configure Miniprofiler
+                    string connectionString = "*";
+                    var mpOptions = new MiniProfilerOptions();
+                    var storage = new SqlServerStorage(connectionString,
+                            "MPTest",
+                            "MPTimingsTest",
+                            "MPClientTimingsTest");
+                    mpOptions.Storage = storage;
+                    MiniProfiler.Configure(mpOptions);
+
+                    WorkerLanguageInvoker.mp = MiniProfiler.StartNew("Miniprofiler" + Guid.NewGuid().ToString());
+                    new Thread(() =>
+                    {
+                        Thread.CurrentThread.IsBackground = true;
+                        Thread.Sleep(60000);
+                        mp.StopAsync();
+                        MiniProfiler.Current.Options.Storage.Save(MiniProfiler.Current);
+                    }).Start();
+                }
+            }
+            return mp;
+        }
+
         protected override async Task<object> InvokeCore(object[] parameters, FunctionInvocationContext context)
         {
             string invocationId = context.ExecutionContext.InvocationId.ToString();
-
-            // TODO: fix extensions and remove
-            object triggerValue = TransformInput(parameters[0], context.Binder.BindingData);
-            var triggerInput = (_trigger.Name, _trigger.DataType ?? DataType.String, triggerValue);
-            var inputs = new[] { triggerInput }.Concat(await BindInputsAsync(context.Binder));
-
-            ScriptInvocationContext invocationContext = new ScriptInvocationContext()
+            using (MPInstance().Step($"({Thread.CurrentThread.ManagedThreadId}===={invocationId})InvokeCore:"))
             {
-                FunctionMetadata = Metadata,
-                BindingData = context.Binder.BindingData,
-                ExecutionContext = context.ExecutionContext,
-                Inputs = inputs,
-                ResultSource = new TaskCompletionSource<ScriptInvocationResult>(),
-                AsyncExecutionContext = System.Threading.ExecutionContext.Capture(),
+                // TODO: fix extensions and remove
+                object triggerValue = TransformInput(parameters[0], context.Binder.BindingData);
+                var triggerInput = (_trigger.Name, _trigger.DataType ?? DataType.String, triggerValue);
+                var inputs = new[] { triggerInput }.Concat(await BindInputsAsync(context.Binder));
 
-                // TODO: link up cancellation token to parameter descriptors
-                CancellationToken = CancellationToken.None,
-                Logger = context.Logger
-            };
+                ScriptInvocationContext invocationContext = new ScriptInvocationContext()
+                {
+                    FunctionMetadata = Metadata,
+                    BindingData = context.Binder.BindingData,
+                    ExecutionContext = context.ExecutionContext,
+                    Inputs = inputs,
+                    ResultSource = new TaskCompletionSource<ScriptInvocationResult>(),
+                    AsyncExecutionContext = System.Threading.ExecutionContext.Capture(),
 
-            ScriptInvocationResult result;
-            _invocationBuffer.Post(invocationContext);
-            result = await invocationContext.ResultSource.Task;
+                    // TODO: link up cancellation token to parameter descriptors
+                    CancellationToken = CancellationToken.None,
+                    Logger = context.Logger
+                };
 
-            await BindOutputsAsync(triggerValue, context.Binder, result);
-            return result.Return;
+                ScriptInvocationResult result;
+                _invocationBuffer.Post(invocationContext);
+                result = await invocationContext.ResultSource.Task;
+
+                await BindOutputsAsync(triggerValue, context.Binder, result);
+                return result.Return;
+            }
         }
 
         private async Task<(string name, DataType type, object value)[]> BindInputsAsync(Binder binder)

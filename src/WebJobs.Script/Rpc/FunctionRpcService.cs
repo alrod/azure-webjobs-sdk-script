@@ -2,15 +2,19 @@
 // Licensed under the MIT License. See License.txt in the project root for license information.
 
 using System;
+using System.Collections.Concurrent;
+using System.Linq;
 using System.Reactive.Concurrency;
 using System.Reactive.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Grpc.Core;
+using Microsoft.Azure.WebJobs.Script.Description;
 using Microsoft.Azure.WebJobs.Script.Eventing;
 using Microsoft.Azure.WebJobs.Script.Eventing.Rpc;
 using Microsoft.Azure.WebJobs.Script.Grpc.Messages;
 using Microsoft.Extensions.Logging;
+using StackExchange.Profiling;
 
 namespace Microsoft.Azure.WebJobs.Script.Rpc
 {
@@ -20,6 +24,7 @@ namespace Microsoft.Azure.WebJobs.Script.Rpc
     {
         private readonly IScriptEventManager _eventManager;
         private readonly ILogger _logger;
+        private SemaphoreSlim _writeLock = new SemaphoreSlim(1, 1);
 
         public FunctionRpcService(IScriptEventManager eventManager, ILoggerFactory loggerFactory)
         {
@@ -49,14 +54,60 @@ namespace Microsoft.Azure.WebJobs.Script.Rpc
                     outboundEventSubscription = _eventManager.OfType<OutboundEvent>()
                         .Where(evt => evt.WorkerId == workerId)
                         .ObserveOn(NewThreadScheduler.Default)
-                        .Subscribe(evt =>
+                        .Subscribe(async evt =>
+                        //.SubscribeOn(NewThreadScheduler.Default)
+                        //.ObserveOn(CurrentThreadScheduler.Instance)
+                        //.ObserveOn(CurrentThreadScheduler.Instance)
+                        //.ObserveOn(TaskPoolScheduler.Default.DisableOptimizations())
+                        //.ObserveOn(SynchronizationContext.Current) // failed
+                        //.ObserveOn(Scheduler.ThreadPool)
                         {
                             try
                             {
-                                // WriteAsync only allows one pending write at a time
-                                // For each responseStream subscription, observe as a blocking write, in series, on a new thread
-                                // Alternatives - could wrap responseStream.WriteAsync with a SemaphoreSlim to control concurrent access
-                                responseStream.WriteAsync(evt.Message).GetAwaiter().GetResult();
+                                string invocationId = string.Empty;
+                                if (evt.Message.InvocationRequest != null)
+                                {
+                                    invocationId = evt.Message.InvocationRequest.InvocationId;
+                                }
+                                else if (evt.Message.InvocationResponse != null)
+                                {
+                                    invocationId = evt.Message.InvocationRequest.InvocationId;
+                                }
+
+                                if (!string.IsNullOrEmpty(invocationId))
+                                {
+                                    WorkerLanguageInvoker.Dic[invocationId].Stop();
+                                    Timing outValue;
+                                    WorkerLanguageInvoker.Dic.TryRemove(invocationId, out outValue);
+                                }
+
+                                using (WorkerLanguageInvoker.MPInstance().Step($"({Thread.CurrentThread.ManagedThreadId}===={invocationId})EventStream1:" + evt.Message.ToString()))
+                                {
+                                    // WriteAsync only allows one pending write at a time
+                                    // For each responseStream subscription, observe as a blocking write, in series, on a new thread
+                                    // Alternatives - could wrap responseStream.WriteAsync with a SemaphoreSlim to control concurrent access
+
+                                    using (WorkerLanguageInvoker.MPInstance().Step($"({Thread.CurrentThread.ManagedThreadId}===={invocationId})EventStream1: await slim "))
+                                    {
+                                        await _writeLock.WaitAsync();
+                                    }
+                                    using (WorkerLanguageInvoker.MPInstance().Step($"({Thread.CurrentThread.ManagedThreadId}===={invocationId})EventStream1: write async "))
+                                    {
+                                        try
+                                        {
+                                            if (!string.IsNullOrEmpty(invocationId))
+                                            {
+                                                WorkerLanguageInvoker.Dic.TryAdd(invocationId, WorkerLanguageInvoker.MPInstance().Step($"({Thread.CurrentThread.ManagedThreadId}===={invocationId})WorkerTime:"));
+                                            }
+
+                                            await responseStream.WriteAsync(evt.Message);
+                                        }
+                                        finally
+                                        {
+                                            _writeLock.Release();
+                                        }
+                                    }
+                                }
                             }
                             catch (Exception subscribeEventEx)
                             {
@@ -66,7 +117,29 @@ namespace Microsoft.Azure.WebJobs.Script.Rpc
 
                     do
                     {
-                        _eventManager.Publish(new InboundEvent(workerId, requestStream.Current));
+                        string invocationId = string.Empty;
+                        if (requestStream.Current.InvocationRequest != null)
+                        {
+                            invocationId = requestStream.Current.InvocationRequest.InvocationId;
+                        }
+                        else if (requestStream.Current.InvocationResponse != null)
+                        {
+                            invocationId = requestStream.Current.InvocationResponse.InvocationId;
+                        }
+                        using (WorkerLanguageInvoker.MPInstance().Step($"({Thread.CurrentThread.ManagedThreadId}===={invocationId})EventStream2:" + requestStream.Current.ToString()))
+                        {
+                        }
+
+                        if (!string.IsNullOrEmpty(invocationId))
+                        {
+                            WorkerLanguageInvoker.Dic[invocationId].Stop();
+                            Timing outValue;
+                            WorkerLanguageInvoker.Dic.TryRemove(invocationId, out outValue);
+                        }
+                        using (WorkerLanguageInvoker.MPInstance().Step($"({Thread.CurrentThread.ManagedThreadId}===={invocationId})EventStream2:" + requestStream.Current.ToString()))
+                        {
+                            _eventManager.Publish(new InboundEvent(workerId, requestStream.Current));
+                        }
                     }
                     while (await messageAvailable());
                 }

@@ -9,6 +9,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reactive.Linq;
+using System.Threading;
 using System.Threading.Tasks.Dataflow;
 using Microsoft.Azure.WebJobs.Logging;
 using Microsoft.Azure.WebJobs.Script.Description;
@@ -17,7 +18,7 @@ using Microsoft.Azure.WebJobs.Script.Eventing;
 using Microsoft.Azure.WebJobs.Script.Eventing.Rpc;
 using Microsoft.Azure.WebJobs.Script.Grpc.Messages;
 using Microsoft.Extensions.Logging;
-
+using StackExchange.Profiling;
 using FunctionMetadata = Microsoft.Azure.WebJobs.Script.Description.FunctionMetadata;
 using MsgType = Microsoft.Azure.WebJobs.Script.Grpc.Messages.StreamingMessage.ContentOneofCase;
 
@@ -361,95 +362,108 @@ namespace Microsoft.Azure.WebJobs.Script.Rpc
 
         internal void SendInvocationRequest(ScriptInvocationContext context)
         {
-            try
+            using (WorkerLanguageInvoker.MPInstance().Step($"({Thread.CurrentThread.ManagedThreadId}===={context.ExecutionContext.InvocationId})SendInvocationRequest:"))
             {
-                if (_functionLoadErrors.ContainsKey(context.FunctionMetadata.FunctionId))
+                try
                 {
-                    _workerChannelLogger.LogDebug($"Function {context.FunctionMetadata.Name} failed to load");
-                    context.ResultSource.TrySetException(_functionLoadErrors[context.FunctionMetadata.FunctionId]);
-                    _executingInvocations.TryRemove(context.ExecutionContext.InvocationId.ToString(), out ScriptInvocationContext _);
-                }
-                else
-                {
-                    if (context.CancellationToken.IsCancellationRequested)
+                    if (_functionLoadErrors.ContainsKey(context.FunctionMetadata.FunctionId))
                     {
-                        context.ResultSource.SetCanceled();
-                        return;
+                        _workerChannelLogger.LogDebug($"Function {context.FunctionMetadata.Name} failed to load");
+                        context.ResultSource.TrySetException(_functionLoadErrors[context.FunctionMetadata.FunctionId]);
+                        _executingInvocations.TryRemove(context.ExecutionContext.InvocationId.ToString(), out ScriptInvocationContext _);
                     }
-
-                    var functionMetadata = context.FunctionMetadata;
-
-                    InvocationRequest invocationRequest = new InvocationRequest()
+                    else
                     {
-                        FunctionId = functionMetadata.FunctionId,
-                        InvocationId = context.ExecutionContext.InvocationId.ToString(),
-                    };
-                    foreach (var pair in context.BindingData)
-                    {
-                        if (pair.Value != null)
+                        if (context.CancellationToken.IsCancellationRequested)
                         {
-                            invocationRequest.TriggerMetadata.Add(pair.Key, pair.Value.ToRpc());
+                            context.ResultSource.SetCanceled();
+                            return;
                         }
-                    }
-                    foreach (var input in context.Inputs)
-                    {
-                        invocationRequest.InputData.Add(new ParameterBinding()
+
+                        var functionMetadata = context.FunctionMetadata;
+
+                        InvocationRequest invocationRequest = new InvocationRequest()
                         {
-                            Name = input.name,
-                            Data = input.val.ToRpc()
+                            FunctionId = functionMetadata.FunctionId,
+                            InvocationId = context.ExecutionContext.InvocationId.ToString(),
+                        };
+                        foreach (var pair in context.BindingData)
+                        {
+                            if (pair.Value != null)
+                            {
+                                invocationRequest.TriggerMetadata.Add(pair.Key, pair.Value.ToRpc());
+                            }
+                        }
+                        foreach (var input in context.Inputs)
+                        {
+                            invocationRequest.InputData.Add(new ParameterBinding()
+                            {
+                                Name = input.name,
+                                Data = input.val.ToRpc()
+                            });
+                        }
+
+                        _executingInvocations.TryAdd(invocationRequest.InvocationId, context);
+
+                        WorkerLanguageInvoker.Dic.TryAdd(invocationRequest.InvocationId, WorkerLanguageInvoker.MPInstance().Step($"({Thread.CurrentThread.ManagedThreadId}===={invocationRequest.InvocationId})SendInvocationRequest(SendStreamingMessage):"));
+                        SendStreamingMessage(new StreamingMessage
+                        {
+                            InvocationRequest = invocationRequest
                         });
                     }
-
-                    _executingInvocations.TryAdd(invocationRequest.InvocationId, context);
-
-                    SendStreamingMessage(new StreamingMessage
-                    {
-                        InvocationRequest = invocationRequest
-                    });
                 }
-            }
-            catch (Exception invokeEx)
-            {
-                context.ResultSource.TrySetException(invokeEx);
+                catch (Exception invokeEx)
+                {
+                    context.ResultSource.TrySetException(invokeEx);
+                }
             }
         }
 
         internal void InvokeResponse(InvocationResponse invokeResponse)
         {
-            if (_executingInvocations.TryRemove(invokeResponse.InvocationId, out ScriptInvocationContext context)
-                && invokeResponse.Result.IsSuccess(context.ResultSource))
+            using (WorkerLanguageInvoker.MPInstance().Step($"({Thread.CurrentThread.ManagedThreadId}===={invokeResponse.InvocationId})InvokeResponse:"))
             {
-                IDictionary<string, object> bindingsDictionary = invokeResponse.OutputData
-                    .ToDictionary(binding => binding.Name, binding => binding.Data.ToObject());
-
-                var result = new ScriptInvocationResult()
+                if (_executingInvocations.TryRemove(invokeResponse.InvocationId, out ScriptInvocationContext context)
+                && invokeResponse.Result.IsSuccess(context.ResultSource))
                 {
-                    Outputs = bindingsDictionary,
-                    Return = invokeResponse?.ReturnValue?.ToObject()
-                };
-                context.ResultSource.SetResult(result);
+                    IDictionary<string, object> bindingsDictionary = invokeResponse.OutputData
+                        .ToDictionary(binding => binding.Name, binding => binding.Data.ToObject());
+
+                    var result = new ScriptInvocationResult()
+                    {
+                        Outputs = bindingsDictionary,
+                        Return = invokeResponse?.ReturnValue?.ToObject()
+                    };
+                    context.ResultSource.SetResult(result);
+                }
             }
         }
 
         internal void Log(RpcEvent msg)
         {
-            var rpcLog = msg.Message.RpcLog;
-            LogLevel logLevel = (LogLevel)rpcLog.Level;
-            if (_executingInvocations.TryGetValue(rpcLog.InvocationId, out ScriptInvocationContext context))
+            using (WorkerLanguageInvoker.MPInstance().Step("Log:" + msg.Message.RpcLog.InvocationId))
             {
-                // Restore the execution context from the original invocation. This allows AsyncLocal state to flow to loggers.
-                System.Threading.ExecutionContext.Run(context.AsyncExecutionContext, (s) =>
+                var rpcLog = msg.Message.RpcLog;
+                LogLevel logLevel = (LogLevel)rpcLog.Level;
+                if (_executingInvocations.TryGetValue(rpcLog.InvocationId, out ScriptInvocationContext context))
                 {
-                    if (rpcLog.Exception != null)
+                    // Restore the execution context from the original invocation. This allows AsyncLocal state to flow to loggers.
+                    System.Threading.ExecutionContext.Run(context.AsyncExecutionContext, (s) =>
                     {
-                        var exception = new RpcException(rpcLog.Message, rpcLog.Exception.Message, rpcLog.Exception.StackTrace);
-                        context.Logger.Log(logLevel, new EventId(0, rpcLog.EventId), rpcLog.Message, exception, (state, exc) => state);
-                    }
-                    else
-                    {
-                        context.Logger.Log(logLevel, new EventId(0, rpcLog.EventId), rpcLog.Message, null, (state, exc) => state);
-                    }
-                }, null);
+                        using (WorkerLanguageInvoker.MPInstance().Step("Log(Run):" + rpcLog.InvocationId))
+                        {
+                            if (rpcLog.Exception != null)
+                            {
+                                var exception = new RpcException(rpcLog.Message, rpcLog.Exception.Message, rpcLog.Exception.StackTrace);
+                                context.Logger.Log(logLevel, new EventId(0, rpcLog.EventId), rpcLog.Message, exception, (state, exc) => state);
+                            }
+                            else
+                            {
+                                context.Logger.Log(logLevel, new EventId(0, rpcLog.EventId), rpcLog.Message, null, (state, exc) => state);
+                            }
+                        }
+                    }, null);
+                }
             }
         }
 
