@@ -35,15 +35,24 @@ namespace Microsoft.Azure.WebJobs.Script.WebHost.Middleware
         {
             if (!_webHostEnvironment.InStandbyMode && _environment.IsContainerReady())
             {
-                await _standbyManager.SpecializeHostAsync();
-
-                if (Interlocked.CompareExchange(ref _specialized, 1, 0) == 0)
+                using (Profiler.Step("PlaceholderSpecializationMiddleware_InvokeSpecializationCheck_standbyManager.SpecializeHostAsync"))
                 {
-                    Interlocked.Exchange(ref _invoke, _next);
+                    await _standbyManager.SpecializeHostAsync();
+                }
+
+                using (Profiler.Step("PlaceholderSpecializationMiddleware_InvokeSpecializationCheck_Interlocked.CompareExchange"))
+                {
+                    if (Interlocked.CompareExchange(ref _specialized, 1, 0) == 0)
+                    {
+                        Interlocked.Exchange(ref _invoke, _next);
+                    }
                 }
             }
 
-            await _next(httpContext);
+            using (Profiler.Step("PlaceholderSpecializationMiddleware_InvokeSpecializationCheck_next"))
+            {
+                await _next(httpContext);
+            }
         }
     }
 }

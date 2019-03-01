@@ -37,42 +37,45 @@ namespace Microsoft.Azure.WebJobs.Script.WebHost.Management
 
         public bool StartAssignment(HostAssignmentContext context)
         {
-            if (!_webHostEnvironment.InStandbyMode)
+            using (Profiler.Step("InstanceManager_StartAssignment"))
             {
-                _logger.LogError("Assign called while host is not in placeholder mode");
-                return false;
-            }
-
-            if (_assignmentContext == null)
-            {
-                lock (_assignmentLock)
+                if (!_webHostEnvironment.InStandbyMode)
                 {
-                    if (_assignmentContext != null)
-                    {
-                        return _assignmentContext.Equals(context);
-                    }
-                    _assignmentContext = context;
+                    _logger.LogError("Assign called while host is not in placeholder mode");
+                    return false;
                 }
 
-                _logger.LogInformation("Starting Assignment");
+                if (_assignmentContext == null)
+                {
+                    lock (_assignmentLock)
+                    {
+                        if (_assignmentContext != null)
+                        {
+                            return _assignmentContext.Equals(context);
+                        }
+                        _assignmentContext = context;
+                    }
 
-                // set a flag which will cause any incoming http requests to buffer
-                // until specialization is complete
-                // the host is guaranteed not to receive any requests until AFTER assign
-                // has been initiated, so setting this flag here is sufficient to ensure
-                // that any subsequent incoming requests while the assign is in progress
-                // will be delayed until complete
-                _webHostEnvironment.DelayRequests();
+                    _logger.LogInformation("Starting Assignment");
 
-                // start the specialization process in the background
-                Task.Run(async () => await Assign(context));
+                    // set a flag which will cause any incoming http requests to buffer
+                    // until specialization is complete
+                    // the host is guaranteed not to receive any requests until AFTER assign
+                    // has been initiated, so setting this flag here is sufficient to ensure
+                    // that any subsequent incoming requests while the assign is in progress
+                    // will be delayed until complete
+                    _webHostEnvironment.DelayRequests();
 
-                return true;
-            }
-            else
-            {
-                // No lock needed here since _assignmentContext is not null when we are here
-                return _assignmentContext.Equals(context);
+                    // start the specialization process in the background
+                    Task.Run(async () => await Assign(context));
+
+                    return true;
+                }
+                else
+                {
+                    // No lock needed here since _assignmentContext is not null when we are here
+                    return _assignmentContext.Equals(context);
+                }
             }
         }
 
@@ -99,27 +102,30 @@ namespace Microsoft.Azure.WebJobs.Script.WebHost.Management
 
         private async Task Assign(HostAssignmentContext assignmentContext)
         {
-            try
+            using (Profiler.Step("InstanceManager_Assign"))
             {
-                // first make all environment and file system changes required for
-                // the host to be specialized
-                await ApplyContext(assignmentContext);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, $"Assign failed");
-                throw;
-            }
-            finally
-            {
-                // all assignment settings/files have been applied so we can flip
-                // the switch now on specialization
-                // even if there are failures applying context above, we want to
-                // leave placeholder mode
-                _logger.LogInformation("Triggering specialization");
-                _webHostEnvironment.FlagAsSpecializedAndReady();
+                try
+                {
+                    // first make all environment and file system changes required for
+                    // the host to be specialized
+                    await ApplyContext(assignmentContext);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, $"Assign failed");
+                    throw;
+                }
+                finally
+                {
+                    // all assignment settings/files have been applied so we can flip
+                    // the switch now on specialization
+                    // even if there are failures applying context above, we want to
+                    // leave placeholder mode
+                    _logger.LogInformation("Triggering specialization");
+                    _webHostEnvironment.FlagAsSpecializedAndReady();
 
-                _webHostEnvironment.ResumeRequests();
+                    _webHostEnvironment.ResumeRequests();
+                }
             }
         }
 

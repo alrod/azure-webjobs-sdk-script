@@ -80,8 +80,11 @@ namespace Microsoft.Azure.WebJobs.Script.Description
 
         public async Task<object> Invoke(object[] parameters)
         {
-            FunctionInvocationContext context = GetContextFromParameters(parameters, Metadata);
-            return await InvokeCore(parameters, context);
+            using (Profiler.Step("FunctionInvokerBase_Invoke"))
+            {
+                FunctionInvocationContext context = GetContextFromParameters(parameters, Metadata);
+                return await InvokeCore(parameters, context);
+            }
         }
 
         private static FunctionInvocationContext GetContextFromParameters(object[] parameters, FunctionMetadata metadata)

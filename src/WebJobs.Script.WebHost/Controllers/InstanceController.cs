@@ -32,22 +32,25 @@ namespace Microsoft.Azure.WebJobs.Script.WebHost.Controllers
         [Authorize(Policy = PolicyNames.AdminAuthLevel)]
         public async Task<IActionResult> Assign([FromBody] EncryptedHostAssignmentContext encryptedAssignmentContext)
         {
-            var containerKey = _environment.GetEnvironmentVariable(EnvironmentSettingNames.ContainerEncryptionKey);
-            var assignmentContext = encryptedAssignmentContext.Decrypt(containerKey);
-
-            // before starting the assignment we want to perform as much
-            // up front validation on the context as possible
-            string error = await _instanceManager.ValidateContext(assignmentContext);
-            if (error != null)
+            using (Profiler.Step("InstanceController_Assign"))
             {
-                return StatusCode(StatusCodes.Status400BadRequest, error);
+                var containerKey = _environment.GetEnvironmentVariable(EnvironmentSettingNames.ContainerEncryptionKey);
+                var assignmentContext = encryptedAssignmentContext.Decrypt(containerKey);
+
+                // before starting the assignment we want to perform as much
+                // up front validation on the context as possible
+                string error = await _instanceManager.ValidateContext(assignmentContext);
+                if (error != null)
+                {
+                    return StatusCode(StatusCodes.Status400BadRequest, error);
+                }
+
+                var result = _instanceManager.StartAssignment(assignmentContext);
+
+                return result
+                    ? Accepted()
+                    : StatusCode(StatusCodes.Status409Conflict, "Instance already assigned");
             }
-
-            var result = _instanceManager.StartAssignment(assignmentContext);
-
-            return result
-                ? Accepted()
-                : StatusCode(StatusCodes.Status409Conflict, "Instance already assigned");
         }
 
         [HttpGet]

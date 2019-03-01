@@ -63,15 +63,36 @@ namespace Microsoft.Azure.WebJobs.Script.WebHost
             // After specialization, we need to ensure that custom timezone
             // settings configured by the user (WEBSITE_TIME_ZONE) are honored.
             // DateTime caches timezone information, so we need to clear the cache.
-            TimeZoneInfo.ClearCachedData();
+            using (Profiler.Step("StandbyManager_SpecializeHostCoreAsync_ClearCachedData"))
+            {
+                TimeZoneInfo.ClearCachedData();
+            }
 
-            // Trigger a configuration reload to pick up all current settings
-            _configuration?.Reload();
+            using (Profiler.Step("StandbyManager_SpecializeHostCoreAsync2__configuration?.Reload()"))
+            {
+                // Trigger a configuration reload to pick up all current settings
+                _configuration?.Reload();
+            }
 
-            await _languageWorkerChannelManager.SpecializeAsync();
-            NotifyChange();
-            await _scriptHostManager.RestartHostAsync();
-            await _scriptHostManager.DelayUntilHostReady();
+            using (Profiler.Step("StandbyManager_SpecializeHostCoreAsync_SpecializeAsync"))
+            {
+                await _languageWorkerChannelManager.SpecializeAsync();
+            }
+
+            using (Profiler.Step("StandbyManager_SpecializeHostCoreAsync_NotifyChange"))
+            {
+                NotifyChange();
+            }
+
+            using (Profiler.Step("StandbyManager_SpecializeHostCoreAsync_RestartHostAsync"))
+            {
+                await _scriptHostManager.RestartHostAsync();
+            }
+
+            using (Profiler.Step("StandbyManager_SpecializeHostCoreAsync_DelayUntilHostReady"))
+            {
+                await _scriptHostManager.DelayUntilHostReady();
+            }
         }
 
         public void NotifyChange()
@@ -149,11 +170,14 @@ namespace Microsoft.Azure.WebJobs.Script.WebHost
         {
             if (!_webHostEnvironment.InStandbyMode && _environment.IsContainerReady())
             {
-                _specializationTimer?.Dispose();
-                _specializationTimer = null;
+                using (Profiler.Step("StandbyManager_OnSpecializationTimerTick"))
+                {
+                    _specializationTimer?.Dispose();
+                    _specializationTimer = null;
 
-                SpecializeHostAsync().ContinueWith(t => _logger.LogError(t.Exception, "Error specializing host."),
-                    TaskContinuationOptions.OnlyOnFaulted);
+                    SpecializeHostAsync().ContinueWith(t => _logger.LogError(t.Exception, "Error specializing host."),
+                        TaskContinuationOptions.OnlyOnFaulted);
+                }
             }
         }
     }

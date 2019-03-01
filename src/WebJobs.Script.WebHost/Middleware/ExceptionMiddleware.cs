@@ -23,25 +23,28 @@ namespace Microsoft.Azure.WebJobs.Script.WebHost.Middleware
 
         public async Task Invoke(HttpContext context)
         {
-            try
+            using (Profiler.Step("ExceptionMiddleware_Invoke_Main"))
             {
-                await _next.Invoke(context);
-            }
-            catch (Exception ex)
-            {
-                var responseFeature = context.Features.Get<IHttpResponseFeature>();
-                context.Response.StatusCode = StatusCodes.Status500InternalServerError;
-
-                if (ex is HttpException httpException)
+                try
                 {
-                    context.Response.StatusCode = httpException.StatusCode;
+                    await _next.Invoke(context);
                 }
-
-                if (!(ex is FunctionInvocationException))
+                catch (Exception ex)
                 {
-                    // exceptions throw by function code are handled/logged elsewhere
-                    // our goal here is to log exceptions coming from our own runtime
-                    _logger.LogError(ex, "An unhandled host error has occurred.");
+                    var responseFeature = context.Features.Get<IHttpResponseFeature>();
+                    context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+
+                    if (ex is HttpException httpException)
+                    {
+                        context.Response.StatusCode = httpException.StatusCode;
+                    }
+
+                    if (!(ex is FunctionInvocationException))
+                    {
+                        // exceptions throw by function code are handled/logged elsewhere
+                        // our goal here is to log exceptions coming from our own runtime
+                        _logger.LogError(ex, "An unhandled host error has occurred.");
+                    }
                 }
             }
         }

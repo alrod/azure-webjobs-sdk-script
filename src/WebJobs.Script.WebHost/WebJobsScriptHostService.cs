@@ -133,18 +133,35 @@ namespace Microsoft.Azure.WebJobs.Script.WebHost
                 // If we're in a non-transient error state or offline, skip host initialization
                 bool skipJobHostStartup = isOffline || hasNonTransientErrors;
 
-                localHost = BuildHost(skipJobHostStartup, skipHostJsonConfiguration: startupMode == JobHostStartupMode.HandlingConfigurationParsingError);
+                using (Profiler.Step("WebJobsScriptHostService_StartHostAsync_BuildHost"))
+                {
+                    localHost = BuildHost(skipJobHostStartup, skipHostJsonConfiguration: startupMode == JobHostStartupMode.HandlingConfigurationParsingError);
+                }
                 _host = localHost;
 
-                var scriptHost = (ScriptHost)_host.Services.GetService<ScriptHost>();
-                if (scriptHost != null)
+                ScriptHost scriptHost;
+                using (Profiler.Step("WebJobsScriptHostService_StartHostAsync_GetService(ScriptHost)"))
                 {
-                    scriptHost.HostInitializing += OnHostInitializing;
+                    scriptHost = (ScriptHost)_host.Services.GetService<ScriptHost>();
                 }
 
-                LogInitialization(localHost, isOffline, attemptCount, ++_hostStartCount);
+                if (scriptHost != null)
+                {
+                    using (Profiler.Step("WebJobsScriptHostService_StartHostAsync_criptHost.HostInitializin"))
+                    {
+                        scriptHost.HostInitializing += OnHostInitializing;
+                    }
+                }
 
-                await _host.StartAsync(cancellationToken);
+                using (Profiler.Step("WebJobsScriptHostService_StartHostAsync_LogInitialization"))
+                {
+                    LogInitialization(localHost, isOffline, attemptCount, ++_hostStartCount);
+                }
+
+                using (Profiler.Step("WebJobsScriptHostService_StartHostAsync__host.StartAsync"))
+                {
+                    await _host.StartAsync(cancellationToken);
+                }
 
                 if (!startupMode.HasFlag(JobHostStartupMode.HandlingError))
                 {
@@ -258,7 +275,11 @@ namespace Microsoft.Azure.WebJobs.Script.WebHost
         {
             try
             {
-                await _hostRestartSemaphore.WaitAsync();
+                using (Profiler.Step("WebJobsScriptHostService_RestartHostAsync__hostRestartSemaphore.WaitAsyn"))
+                {
+                    await _hostRestartSemaphore.WaitAsync();
+                }
+
                 if (State == ScriptHostState.Stopping || State == ScriptHostState.Stopped)
                 {
                     _logger.LogDebug($"Host restart was requested, but current host state is '{State}'. Skipping restart.");
@@ -274,7 +295,10 @@ namespace Microsoft.Azure.WebJobs.Script.WebHost
                 Task startTask = StartAsync(cancellationToken);
                 Task stopTask = Orphan(previousHost, _logger, cancellationToken);
 
-                await startTask;
+                using (Profiler.Step("WebJobsScriptHostService_RestartHostAsync_await_startTask"))
+                {
+                    await startTask;
+                }
 
                 _logger.LogInformation("Host restarted.");
             }

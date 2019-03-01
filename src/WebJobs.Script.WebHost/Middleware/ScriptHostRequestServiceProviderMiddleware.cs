@@ -21,14 +21,20 @@ namespace Microsoft.Azure.WebJobs.Script.WebHost.Middleware
 
         public async Task Invoke(HttpContext httpContext, WebJobsScriptHostService manager)
         {
-            if (manager.Services is IServiceScopeFactory scopedServiceProvider)
+            using (Profiler.Step("ScriptHostRequestServiceProviderMiddleware_Invoke_Main"))
             {
-                var features = httpContext.Features;
-                var servicesFeature = features.Get<IServiceProvidersFeature>();
-                features.Set<IServiceProvidersFeature>(new RequestServicesFeature(httpContext, scopedServiceProvider));
+                if (manager.Services is IServiceScopeFactory scopedServiceProvider)
+                {
+                    var features = httpContext.Features;
+                    var servicesFeature = features.Get<IServiceProvidersFeature>();
+                    features.Set<IServiceProvidersFeature>(new RequestServicesFeature(httpContext, scopedServiceProvider));
+                }
             }
 
-            await _next(httpContext);
+            using (Profiler.Step("ScriptHostRequestServiceProviderMiddleware_Invoke_next"))
+            {
+                await _next(httpContext);
+            }
         }
     }
 }

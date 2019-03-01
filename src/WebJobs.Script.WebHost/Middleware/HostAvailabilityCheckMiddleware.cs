@@ -27,24 +27,33 @@ namespace Microsoft.Azure.WebJobs.Script.WebHost.Middleware
         {
             if (scriptHostManager.State != ScriptHostState.Offline)
             {
-                using (Logger.VerifyingHostAvailabilityScope(_logger, httpContext.TraceIdentifier))
+                using (Profiler.Step("HostAvailabilityCheckMiddleware_Invoke_Main"))
                 {
-                    Logger.InitiatingHostAvailabilityCheck(_logger);
-
-                    bool hostReady = await scriptHostManager.DelayUntilHostReady();
-                    if (!hostReady)
+                    using (Logger.VerifyingHostAvailabilityScope(_logger, httpContext.TraceIdentifier))
                     {
-                        Logger.HostUnavailableAfterCheck(_logger);
+                        using (Profiler.Step("HostAvailabilityCheckMiddleware_Invoke_Main1"))
+                        {
+                            Logger.InitiatingHostAvailabilityCheck(_logger);
 
-                        httpContext.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
-                        await httpContext.Response.WriteAsync("Function host is not running.");
+                            bool hostReady = await scriptHostManager.DelayUntilHostReady();
+                            if (!hostReady)
+                            {
+                                Logger.HostUnavailableAfterCheck(_logger);
 
-                        return;
+                                httpContext.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+                                await httpContext.Response.WriteAsync("Function host is not running.");
+
+                                return;
+                            }
+                        }
+
+                        using (Profiler.Step("HostAvailabilityCheckMiddleware_Invoke_next"))
+                        {
+                            Logger.HostAvailabilityCheckSucceeded(_logger);
+                        }
+
+                        await _next.Invoke(httpContext);
                     }
-
-                    Logger.HostAvailabilityCheckSucceeded(_logger);
-
-                    await _next.Invoke(httpContext);
                 }
             }
             else

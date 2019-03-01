@@ -27,30 +27,39 @@ namespace Microsoft.Azure.WebJobs.Script.WebHost.Middleware
 
         public async Task Invoke(HttpContext context)
         {
-            SetRequestId(context.Request);
+            Stopwatch sw = null;
+            JObject details;
+            Dictionary<string, object> logData = null;
+            using (Profiler.Step("SystemTraceMiddleware_Invoke_Main"))
+            {
+                SetRequestId(context.Request);
 
-            var sw = new Stopwatch();
-            sw.Start();
-            var request = context.Request;
-            var details = new JObject
+                sw = new Stopwatch();
+                sw.Start();
+                var request = context.Request;
+                details = new JObject
             {
                 { "requestId", request.GetRequestId() },
                 { "method", request.Method.ToString() },
                 { "uri", request.Path.ToString() }
             };
-            var logData = new Dictionary<string, object>
-            {
-                [ScriptConstants.LogPropertyActivityIdKey] = request.GetRequestId()
-            };
-            _logger.Log(LogLevel.Information, 0, logData, null, (s, e) => $"Executing HTTP request: {details}");
+                logData = new Dictionary<string, object>
+                {
+                    [ScriptConstants.LogPropertyActivityIdKey] = request.GetRequestId()
+                };
+                _logger.Log(LogLevel.Information, 0, logData, null, (s, e) => $"Executing HTTP request: {details}");
+            }
 
             await _next.Invoke(context);
 
-            sw.Stop();
-            details["identities"] = GetIdentities(context);
-            details["status"] = context.Response.StatusCode;
-            details["duration"] = sw.ElapsedMilliseconds;
-            _logger.Log(LogLevel.Information, 0, logData, null, (s, e) => $"Executed HTTP request: {details}");
+            using (Profiler.Step("SystemTraceMiddleware_Invoke_Main1"))
+            {
+                sw.Stop();
+                details["identities"] = GetIdentities(context);
+                details["status"] = context.Response.StatusCode;
+                details["duration"] = sw.ElapsedMilliseconds;
+                _logger.Log(LogLevel.Information, 0, logData, null, (s, e) => $"Executed HTTP request: {details}");
+            }
         }
 
         internal static void SetRequestId(HttpRequest request)

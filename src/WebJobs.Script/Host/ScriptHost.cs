@@ -245,16 +245,28 @@ namespace Microsoft.Azure.WebJobs.Script
 
         protected override async Task StartAsyncCore(CancellationToken cancellationToken)
         {
-            var ignore = LogInitializationAsync();
+            using (Profiler.Step("ScriptHost_StartAsyncCore_LogInitializationAsync"))
+            {
+                var ignore = LogInitializationAsync();
+            }
 
-            await InitializeAsync();
+            using (Profiler.Step("ScriptHost_StartAsyncCore_InitializeAsync"))
+            {
+                await InitializeAsync();
+            }
 
             // Throw if cancellation occurred during initialization.
             cancellationToken.ThrowIfCancellationRequested();
 
-            await base.StartAsyncCore(cancellationToken);
+            using (Profiler.Step("ScriptHost_StartAsyncCore_StartAsyncCore(cancellationToken)"))
+            {
+                await base.StartAsyncCore(cancellationToken);
+            }
 
-            LogHostFunctionErrors();
+            using (Profiler.Step("ScriptHost_StartAsyncCore_LogHostFunctionErrors"))
+            {
+                LogHostFunctionErrors();
+            }
         }
 
         /// <summary>
@@ -263,28 +275,56 @@ namespace Microsoft.Azure.WebJobs.Script
         /// </summary>
         public async Task InitializeAsync()
         {
-            _stopwatch.Start();
-            if (!_environment.IsPlaceholderModeEnabled())
+            using (Profiler.Step("ScriptHost_InitializeAsync"))
             {
-                string runtimeLanguage = string.IsNullOrEmpty(_workerRuntime) ? "none" : _workerRuntime;
-                _metricsLogger.LogEvent(string.Format(MetricEventNames.HostStartupRuntimeLanguage, runtimeLanguage));
-            }
-            using (_metricsLogger.LatencyEvent(MetricEventNames.HostStartupLatency))
-            {
-                PreInitialize();
-                HostInitializing?.Invoke(this, EventArgs.Empty);
-
-                // Generate Functions
-                IEnumerable<FunctionMetadata> functions = GetFunctionsMetadata();
-
-                // Initialize language worker function dispatcher
-                _functionDispatcher.Initialize(_workerRuntime, functions);
-
-                var directTypes = GetDirectTypes(functions);
-                await InitializeFunctionDescriptorsAsync(functions);
-                GenerateFunctions(directTypes);
-
-                CleanupFileSystem();
+                using (Profiler.Step("ScriptHost_InitializeAsync_IsPlaceholderModeEnabled"))
+                {
+                    _stopwatch.Start();
+                    if (!_environment.IsPlaceholderModeEnabled())
+                    {
+                        string runtimeLanguage = string.IsNullOrEmpty(_workerRuntime) ? "none" : _workerRuntime;
+                        _metricsLogger.LogEvent(string.Format(MetricEventNames.HostStartupRuntimeLanguage, runtimeLanguage));
+                    }
+                }
+                using (_metricsLogger.LatencyEvent(MetricEventNames.HostStartupLatency))
+                {
+                    using (Profiler.Step("ScriptHost_InitializeAsync_PreInitialize"))
+                    {
+                        PreInitialize();
+                    }
+                    using (Profiler.Step("ScriptHost_InitializeAsync_HostInitializing.Invoke"))
+                    {
+                        HostInitializing?.Invoke(this, EventArgs.Empty);
+                    }
+                    IEnumerable<FunctionMetadata> functions;
+                    using (Profiler.Step("ScriptHost_InitializeAsync_GetFunctionsMetadata"))
+                    {
+                        // Generate Functions
+                        functions = GetFunctionsMetadata();
+                    }
+                    using (Profiler.Step("ScriptHost_InitializeAsync__functionDispatcher.Initialize"))
+                    {
+                        // Initialize language worker function dispatcher
+                        _functionDispatcher.Initialize(_workerRuntime, functions);
+                    }
+                    IEnumerable<Type> directTypes;
+                    using (Profiler.Step("ScriptHost_InitializeAsync_GetDirectTypes"))
+                    {
+                        directTypes = GetDirectTypes(functions);
+                    }
+                    using (Profiler.Step("ScriptHost_InitializeAsync_InitializeFunctionDescriptorsAsync"))
+                    {
+                        await InitializeFunctionDescriptorsAsync(functions);
+                    }
+                    using (Profiler.Step("ScriptHost_InitializeAsync_GenerateFunctions"))
+                    {
+                        GenerateFunctions(directTypes);
+                    }
+                    using (Profiler.Step("ScriptHost_InitializeAsync_CleanupFileSystem"))
+                    {
+                        CleanupFileSystem();
+                    }
+                }
             }
         }
 

@@ -22,17 +22,23 @@ namespace Microsoft.Azure.WebJobs.Script.WebHost.Middleware
 
         public async Task Invoke(HttpContext httpContext)
         {
-            if (httpContext.Request.Headers.TryGetValue(DisguisedHostHeader, out StringValues value))
+            using (Profiler.Step("AppServiceHeaderFixupMiddleware_Invoke_Main"))
             {
-                httpContext.Request.Headers[HostHeader] = value;
+                if (httpContext.Request.Headers.TryGetValue(DisguisedHostHeader, out StringValues value))
+                {
+                    httpContext.Request.Headers[HostHeader] = value;
+                }
+
+                if (httpContext.Request.Headers.TryGetValue(ForwardedProtocolHeader, out value))
+                {
+                    httpContext.Request.Scheme = value;
+                }
             }
 
-            if (httpContext.Request.Headers.TryGetValue(ForwardedProtocolHeader, out value))
+            using (Profiler.Step("AppServiceHeaderFixupMiddleware_Invoke_Next"))
             {
-                httpContext.Request.Scheme = value;
+                await _next(httpContext);
             }
-
-            await _next(httpContext);
         }
     }
 }

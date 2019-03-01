@@ -45,26 +45,46 @@ namespace Microsoft.Azure.WebJobs.Script.WebHost.Middleware
             //    context.Items[ScriptConstants.AzureFunctionsHostKey] = scriptHost;
             //}
 
-            if (_next != null)
+            using (Profiler.Step("FunctionInvocationMiddleware_Invoke_next"))
             {
-                await _next(context);
+                if (_next != null)
+                {
+                    await _next(context);
+                }
             }
 
-            IFunctionExecutionFeature functionExecution = context.Features.Get<IFunctionExecutionFeature>();
-            if (functionExecution != null && !context.Response.HasStarted())
+            using (Profiler.Step("FunctionInvocationMiddleware_Invoke_Main"))
             {
-                int nestedProxiesCount = GetNestedProxiesCount(context, functionExecution);
-                IActionResult result = await GetResultAsync(context, functionExecution);
-                if (nestedProxiesCount > 0)
+                IFunctionExecutionFeature functionExecution;
+                using (Profiler.Step("FunctionInvocationMiddleware_Invoke_context.Features.Get<IFunctionExecutionFeature>"))
                 {
-                    // if Proxy, the rest of the pipleline will be processed by Proxies in
-                    // case there are response overrides and what not.
-                    SetProxyResult(context, nestedProxiesCount, result);
-                    return;
+                    functionExecution = context.Features.Get<IFunctionExecutionFeature>();
                 }
-
-                ActionContext actionContext = new ActionContext(context, new RouteData(), new ActionDescriptor());
-                await result.ExecuteResultAsync(actionContext);
+                if (functionExecution != null && !context.Response.HasStarted())
+                {
+                    int nestedProxiesCount;
+                    using (Profiler.Step("FunctionInvocationMiddleware_Invoke_GetNestedProxiesCount"))
+                    {
+                        nestedProxiesCount = GetNestedProxiesCount(context, functionExecution);
+                    }
+                    IActionResult result;
+                    using (Profiler.Step("FunctionInvocationMiddleware_Invoke_GetResultAsync")))
+                    {
+                        result = await GetResultAsync(context, functionExecution);
+                    }
+                    if (nestedProxiesCount > 0)
+                    {
+                        // if Proxy, the rest of the pipleline will be processed by Proxies in
+                        // case there are response overrides and what not.
+                        SetProxyResult(context, nestedProxiesCount, result);
+                        return;
+                    }
+                    using (Profiler.Step("FunctionInvocationMiddleware_Invoke_ExecuteResultAsync" + nestedProxiesCount.ToString()))
+                    {
+                        ActionContext actionContext = new ActionContext(context, new RouteData(), new ActionDescriptor());
+                        await result.ExecuteResultAsync(actionContext);
+                    }
+                }
             }
         }
 
