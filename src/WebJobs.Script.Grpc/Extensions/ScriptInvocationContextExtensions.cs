@@ -26,6 +26,12 @@ namespace Microsoft.Azure.WebJobs.Script.Grpc
                 TraceContext = GetRpcTraceContext(context.Traceparent, context.Tracestate, context.Attributes, logger),
             };
 
+            if (context.ExecutionContext.RetryContext != null)
+            {
+                invocationRequest.RetryCount = context.ExecutionContext.RetryContext.RetryCount;
+                invocationRequest.MaxRetryCount = context.ExecutionContext.RetryContext.MaxRetryCount;
+            }
+
             var rpcValueCache = new Dictionary<object, TypedData>();
 
             foreach (var input in context.Inputs)
