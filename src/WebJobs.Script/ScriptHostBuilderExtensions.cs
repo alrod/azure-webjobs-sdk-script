@@ -7,6 +7,7 @@ using System.Runtime.InteropServices;
 using Microsoft.ApplicationInsights.DependencyCollector;
 using Microsoft.ApplicationInsights.Extensibility;
 using Microsoft.Azure.WebJobs.Host.Executors;
+using Microsoft.Azure.WebJobs.Host.Scale;
 using Microsoft.Azure.WebJobs.Hosting;
 using Microsoft.Azure.WebJobs.Logging;
 using Microsoft.Azure.WebJobs.Logging.ApplicationInsights;
@@ -236,6 +237,7 @@ namespace Microsoft.Azure.WebJobs.Script
                 // Rpc Worker
                 services.AddSingleton<IJobHostRpcWorkerChannelManager, JobHostRpcWorkerChannelManager>();
                 services.AddSingleton<IRpcFunctionInvocationDispatcherLoadBalancer, RpcFunctionInvocationDispatcherLoadBalancer>();
+                services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostThrottleProvider, WorkerHealthTrottlerProvider>());
 
                 //Worker Function Invocation dispatcher
                 services.AddSingleton<IFunctionInvocationDispatcherFactory, FunctionInvocationDispatcherFactory>();

@@ -41,6 +41,7 @@ namespace Microsoft.Azure.WebJobs.Script.Grpc
         private readonly IEnvironment _environment;
         private readonly IOptionsMonitor<ScriptApplicationHostOptions> _applicationHostOptions;
         private readonly ISharedMemoryManager _sharedMemoryManager;
+        private readonly WorkerMonitor _workerMonitor;
 
         private IDisposable _functionLoadRequestResponseEvent;
         private bool _disposed;
@@ -118,6 +119,7 @@ namespace Microsoft.Azure.WebJobs.Script.Grpc
             _startLatencyMetric = metricsLogger?.LatencyEvent(string.Format(MetricEventNames.WorkerInitializeLatency, workerConfig.Description.Language, attemptCount));
 
             _state = RpcWorkerChannelState.Default;
+            _workerMonitor = new WorkerMonitor(this);
         }
 
         public string Id => _workerId;
@@ -250,6 +252,7 @@ namespace Microsoft.Azure.WebJobs.Script.Grpc
             _workerCapabilities.UpdateCapabilities(_initMessage.Capabilities);
             _isSharedMemoryDataTransferEnabled = IsSharedMemoryDataTransferEnabled();
             _workerInitTask.SetResult(true);
+            _workerMonitor.Start();
         }
 
         public void SetupFunctionInvocationBuffers(IEnumerable<FunctionMetadata> functions)
@@ -308,6 +311,11 @@ namespace Microsoft.Azure.WebJobs.Script.Grpc
             });
 
             return _reloadTask.Task;
+        }
+
+        public WorkerStats GetStats()
+        {
+            return _workerMonitor.GetStats();
         }
 
         internal FunctionEnvironmentReloadRequest GetFunctionEnvironmentReloadRequest(IDictionary processEnv)
